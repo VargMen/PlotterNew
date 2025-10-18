@@ -6,5 +6,18 @@
 
     <Application.Styles>
         <FluentTheme />
+        <StyleInclude Source="Styles/AppDefault.axaml"></StyleInclude>
     </Application.Styles>
+
+    <Application.Resources>
+        <SolidColorBrush x:Key="PrimaryBackground" Color="#F3F2EC"></SolidColorBrush>
+        <SolidColorBrush x:Key="PrimaryText" Color="#000000"></SolidColorBrush>
+        <SolidColorBrush x:Key="PrimaryHoverText" Color="#333446"></SolidColorBrush>
+        <SolidColorBrush x:Key="PrimaryButtonBackground" Color="#A5BFCC"></SolidColorBrush>
+        <SolidColorBrush x:Key="PrimaryHoverButtonBackground" Color="#7E99A3"></SolidColorBrush>
+        <LinearGradientBrush x:Key="PrimaryBackgroundGradient" StartPoint="0, 0" EndPoint="100, 0">
+            <GradientStop Offset="0" Color="#F3F2EC"></GradientStop>
+            <GradientStop Offset="1" Color="#F3F2EC"></GradientStop>
+        </LinearGradientBrush>
+    </Application.Resources>
 </Application>
