@@ -1,0 +1,44 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="1280" d:DesignHeight="720"
+        Width="1280" Height="720"
+        x:Class="PlotterNew.MainView"
+        xmlns:controls="clr-namespace:PlotterNew.Controls"
+        xmlns:vm="clr-namespace:PlotterNew.ViewModels"
+        x:DataType="vm:MainViewModel"
+        Title="PlotterNew">
+
+        <Window.DataContext>
+            <vm:MainViewModel></vm:MainViewModel>
+         </Window.DataContext>
+
+        <Grid ColumnDefinitions="250, *">
+            <Border Grid.Column="0" Background="LightGray">
+                <Grid RowDefinitions="Auto, Auto">
+					<TextBlock Grid.Row="0">
+                        <TextBlock.Text>
+                            <MultiBinding StringFormat="Pan offset: {0:F2}, {1:F2}">
+                                <Binding Path="CurrPanX"/>
+                                <Binding Path="CurrPanY"/>
+                            </MultiBinding>
+                        </TextBlock.Text>
+                    </TextBlock>
+                    <TextBlock Grid.Row="1">
+                        <TextBlock.Text>
+                            <MultiBinding StringFormat="Elapsed time: {0:F2}">
+                                <Binding Path="ElapsedTime"/>
+                            </MultiBinding>
+                        </TextBlock.Text>
+                    </TextBlock>
+                </Grid>
+            </Border>
+         
+            <Border Grid.Column="1">
+                <controls:Canvas></controls:Canvas>
+            </Border>
+        </Grid>
+       
+        
+</Window>
