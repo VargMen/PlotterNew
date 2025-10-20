@@ -243,28 +243,31 @@ namespace PlotterNew.Controls
 
             context.DrawLine(pen, new Point(0, 0), new Point(100, 100));
 
-            foreach (var (index, waveform) in _waveforms.Select((wf, i) => (i, wf)))
+            if (_waveforms[0].nominalPoints.Count == 0)
+                return;
+
+            int start = LowerBound(_waveforms[0].nominalPoints, minVisibleX);
+            int end = UpperBound(_waveforms[0].nominalPoints, maxVisibleX);
+
+            if (start < end && start <= _waveforms[0].nominalPoints.Count && end > 0)
             {
-                int start = LowerBound(waveform.nominalPoints, minVisibleX);
-                int end = UpperBound(waveform.nominalPoints, maxVisibleX);
-
-                if (start > end || start >= waveform.nominalPoints.Count || end < 0)
-                    continue;
-
                 start = Math.Max(0, start - 1);
-                end = Math.Min(waveform.nominalPoints.Count - 1, end + 1);
+                end = Math.Min(_waveforms[0].nominalPoints.Count - 1, end + 1);
 
-                var geo = new StreamGeometry();
-                using (var g = geo.Open())
+                foreach (var (index, waveform) in _waveforms.Select((wf, i) => (i, wf)))
                 {
-                    g.BeginFigure(waveform.GetTransformedPoint(start), false);
-                    for (int j = start + 1; j <= end; j++)
-                        g.LineTo(waveform.GetTransformedPoint(j));
-                    g.EndFigure(false);
-                }
+                    var geo = new StreamGeometry();
+                    using (var g = geo.Open())
+                    {
+                        g.BeginFigure(waveform.GetTransformedPoint(start), false);
+                        for (int j = start + 1; j <= end; j++)
+                            g.LineTo(waveform.GetTransformedPoint(j));
+                        g.EndFigure(false);
+                    }
 
-                Pen penForThisWaveform = PredefinedPens.Get(index);
-                context.DrawGeometry(null, penForThisWaveform, geo);
+                    Pen penForThisWaveform = PredefinedPens.Get(index);
+                    context.DrawGeometry(null, penForThisWaveform, geo);
+                }
             }
 
             var penY = new Pen(Brushes.Green, 4);
