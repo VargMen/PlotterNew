@@ -37,6 +37,7 @@ namespace PlotterNew.Controls
         private bool _autoScrollEnabled = true;
 
         private bool _renderQueued;
+
         public Canvas()
         {
             PointerPressed += OnPointerPressed;
@@ -198,6 +199,7 @@ namespace PlotterNew.Controls
         private void OnPointerPressed(object? sender, PointerPressedEventArgs e)
         {
             _isPanning = true;
+            _autoScrollEnabled = false;
             _lastMouse = e.GetPosition(this);
             e.Pointer.Capture(this);
         }
@@ -205,6 +207,7 @@ namespace PlotterNew.Controls
         private void OnPointerReleased(object? sender, PointerReleasedEventArgs e)
         {
             _isPanning = false;
+            _autoScrollEnabled = true;
             e.Pointer.Capture(null);
         }
 
@@ -236,69 +239,66 @@ namespace PlotterNew.Controls
 
             context.PushTransform(Matrix.CreateTranslation(_panOffset));
 
-            var pen = new Pen(Brushes.White, 2);
-
-            double minVisibleX = -_panOffset.X;
-            double maxVisibleX = -_panOffset.X + Bounds.Width;
-
-            context.DrawLine(pen, new Point(0, 0), new Point(100, 100));
-
+            RenderWaveforms(context);
+        }
+        private void RenderWaveforms(DrawingContext context)
+        {
             if (_waveforms[0].nominalPoints.Count == 0)
                 return;
 
-            int start = LowerBound(_waveforms[0].nominalPoints, minVisibleX);
-            int end = UpperBound(_waveforms[0].nominalPoints, maxVisibleX);
+            double minViewX = -_panOffset.X;
+            double maxViewX = -_panOffset.X + Bounds.Width;
 
-            if (start < end && start <= _waveforms[0].nominalPoints.Count && end > 0)
+            int start = FindClosestValueIndex(_waveforms[0].nominalPoints, minViewX);
+            int end = FindClosestValueIndex(_waveforms[0].nominalPoints, maxViewX);
+
+            if (start < end && start <= _waveforms[0].nominalPoints.Count)
             {
-                start = Math.Max(0, start - 1);
+                start = Math.Max(0, start);
                 end = Math.Min(_waveforms[0].nominalPoints.Count - 1, end + 1);
 
-                foreach (var (index, waveform) in _waveforms.Select((wf, i) => (i, wf)))
+                for(int i = 0; i < _waveforms.Count; ++i)
                 {
                     var geo = new StreamGeometry();
                     using (var g = geo.Open())
                     {
-                        g.BeginFigure(waveform.GetTransformedPoint(start), false);
+                        g.BeginFigure(_waveforms[i].GetTransformedPoint(start), false);
                         for (int j = start + 1; j <= end; j++)
-                            g.LineTo(waveform.GetTransformedPoint(j));
+                        {
+                            g.LineTo(_waveforms[i].GetTransformedPoint(j));
+                        }
                         g.EndFigure(false);
                     }
 
-                    Pen penForThisWaveform = PredefinedPens.Get(index);
+                    Pen penForThisWaveform = PredefinedPens.Get(i);
                     context.DrawGeometry(null, penForThisWaveform, geo);
                 }
             }
-
+        }
+        private void RenderAxes(DrawingContext context)
+        {
             var penY = new Pen(Brushes.Green, 4);
             context.DrawLine(penY, new Point(0, 0), new Point(0, 500));
 
             var penX = new Pen(Brushes.Red, 4);
             context.DrawLine(penX, new Point(0, 0), new Point(500, 0));
         }
-
-        private static int LowerBound(List<Avalonia.Point> pts, double x)
-        {
-            int lo = 0, hi = pts.Count;
-            while (lo < hi)
-            {
-                int mid = (lo + hi) >> 1;
-                if (pts[mid].X < x) lo = mid + 1;
-                else hi = mid;
-            }
-            return lo;
-        }
-
-        private static int UpperBound(List<Avalonia.Point> pts, double x)
+        private static int FindClosestValueIndex(List<Avalonia.Point> pts, double x)
         {
             int lo = 0, hi = pts.Count; // [lo, hi)
             while (lo < hi)
             {
                 int mid = (lo + hi) >> 1;
-                if (pts[mid].X <= x) lo = mid + 1;
-                else hi = mid;
+                if (pts[mid].X <= x)
+                {
+                    lo = mid + 1;
+                }
+                else
+                {
+                    hi = mid;
+                }
             }
             return lo - 1;
-        }  
+        }
     }
 }
