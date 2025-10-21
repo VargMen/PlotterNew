@@ -39,7 +39,7 @@ namespace PlotterNew.Controls
 
         private bool _renderQueued;
 
-        private const int _waveformsAmount = 3;
+        private const int _waveformsAmount = 10;
         public Canvas()
         {
             PointerPressed += OnPointerPressed;
