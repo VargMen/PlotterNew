@@ -32,16 +32,12 @@ namespace PlotterNew.Services
             Phase = phase ?? NextRange(0, 2 * Math.PI);
             TimeStep = timeStep ?? 100;
         }
-
-        // Generate a single point at time t
         public Avalonia.Point GetPoint(double t)
         {
             double x = t * TimeStep;
             double y = Y0 + Amplitude * Math.Sin(Omega * x + Phase);
             return new Avalonia.Point(x, y);
         }
-
-        // Generate full waveform for duration at given sample rate
         public List<Avalonia.Point> Generate(double durationSeconds, double sampleRateHz)
         {
             int samples = (int)Math.Round(durationSeconds * sampleRateHz);
@@ -55,8 +51,6 @@ namespace PlotterNew.Services
 
             return points;
         }
-
-        // Generate several sine generators at once
         public static List<SineGenerator> CreateMultiple(int count)
         {
             var list = new List<SineGenerator>(count);

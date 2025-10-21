@@ -1,11 +1,13 @@
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using PlotterNew.ViewModels;
 
 namespace PlotterNew
 {
     public partial class App : Application
     {
+        public static MainViewModel MainVM { get; } = new MainViewModel();
         public override void Initialize()
         {
             AvaloniaXamlLoader.Load(this);
@@ -15,7 +17,10 @@ namespace PlotterNew
         {
             if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
             {
-                desktop.MainWindow = new MainView();
+                desktop.MainWindow = new MainView()
+                {
+                    DataContext = MainVM
+                };
             }
 
             base.OnFrameworkInitializationCompleted();

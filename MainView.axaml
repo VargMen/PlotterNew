@@ -16,8 +16,8 @@
 
         <Grid ColumnDefinitions="250, *">
             <Border Grid.Column="0" Background="LightGray">
-                <Grid RowDefinitions="Auto, Auto">
-					<TextBlock Grid.Row="0">
+                <StackPanel Orientation="Vertical" Margin="10">
+                    <TextBlock Grid.Row="0">
                         <TextBlock.Text>
                             <MultiBinding StringFormat="Pan offset: {0:F2}, {1:F2}">
                                 <Binding Path="CurrPanX"/>
@@ -32,7 +32,16 @@
                             </MultiBinding>
                         </TextBlock.Text>
                     </TextBlock>
-                </Grid>
+                    <ComboBox Width="200" Grid.Row="2"  ItemsSource="{Binding WaveformIds}"
+                    SelectedItem="{Binding CurrWaveformId, Mode=TwoWay}">
+                    </ComboBox>
+                    <StackPanel Grid.Row="3" Spacing="0" Margin="10">
+                        <TextBlock Text="{Binding CurrWaveformScale, StringFormat='Scale: {0:F0}'}"/>
+                        <Slider Minimum="0" Maximum="100"
+                                Value="{Binding CurrWaveformScale, Mode=TwoWay}"
+                                Width="250"/>
+                    </StackPanel>
+                </StackPanel>
             </Border>
          
             <Border Grid.Column="1">

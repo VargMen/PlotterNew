@@ -9,6 +9,7 @@ using PlotterNew.ViewModels;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Linq;
 using System.Timers;
@@ -38,6 +39,7 @@ namespace PlotterNew.Controls
 
         private bool _renderQueued;
 
+        private const int _waveformsAmount = 3;
         public Canvas()
         {
             PointerPressed += OnPointerPressed;
@@ -55,11 +57,19 @@ namespace PlotterNew.Controls
             _dataTimer = new Timer(10) { AutoReset = true };
             _dataTimer.Elapsed += (_, __) => OnDataTick();
 
-            const int _waveformsAmount = 3;
             _waveforms = Waveform.CreateMultiple(_waveformsAmount);
             _sineGenerators = Services.SineGenerator.CreateMultiple(_waveformsAmount);
         }
-
+        private void OnOpened(object? sender, EventArgs e)
+        {
+        }
+        private void InitViewModels(MainViewModel vm)
+        {
+            for (int i = 0; i < _waveformsAmount; ++i)
+            {
+                vm.WaveformIds.Add(i);
+            }
+        }
         private void QueueRender()
         {
             if (_renderQueued) return;
@@ -92,7 +102,7 @@ namespace PlotterNew.Controls
 
             TryAutoScroll();
 
-            UpdateViewModel((MainViewModel)DataContext);
+            UpdateViewModel();
 
             InvalidateVisual();
         }
@@ -128,11 +138,11 @@ namespace PlotterNew.Controls
             }
         }
 
-        public void UpdateViewModel(MainViewModel vm)
+        public void UpdateViewModel()
         {
-            vm.CurrPanX = _panOffset.X;
-            vm.CurrPanY = _panOffset.Y;
-            vm.ElapsedTime = _stopwatch.Elapsed.TotalSeconds;
+            App.MainVM.CurrPanX = _panOffset.X;
+            App.MainVM.CurrPanY = _panOffset.Y;
+            App.MainVM.ElapsedTime = _stopwatch.Elapsed.TotalSeconds;
         }
         public void Dispose()
         {
@@ -249,8 +259,8 @@ namespace PlotterNew.Controls
             double minViewX = -_panOffset.X;
             double maxViewX = -_panOffset.X + Bounds.Width;
 
-            int start = FindClosestValueIndex(_waveforms[0].nominalPoints, minViewX);
-            int end = FindClosestValueIndex(_waveforms[0].nominalPoints, maxViewX);
+            int start = LowerBound(_waveforms[0].nominalPoints, minViewX);
+            int end = UpperBound(_waveforms[0].nominalPoints, maxViewX);
 
             if (start < end && start <= _waveforms[0].nominalPoints.Count)
             {
@@ -283,20 +293,26 @@ namespace PlotterNew.Controls
             var penX = new Pen(Brushes.Red, 4);
             context.DrawLine(penX, new Point(0, 0), new Point(500, 0));
         }
-        private static int FindClosestValueIndex(List<Avalonia.Point> pts, double x)
+        private static int LowerBound(List<Avalonia.Point> pts, double x)
+        {
+            int lo = 0, hi = pts.Count;
+            while (lo < hi)
+            {
+                int mid = (lo + hi) >> 1;
+                if (pts[mid].X < x) lo = mid + 1;
+                else hi = mid;
+            }
+            return lo;
+        }
+
+        private static int UpperBound(List<Avalonia.Point> pts, double x)
         {
             int lo = 0, hi = pts.Count; // [lo, hi)
             while (lo < hi)
             {
                 int mid = (lo + hi) >> 1;
-                if (pts[mid].X <= x)
-                {
-                    lo = mid + 1;
-                }
-                else
-                {
-                    hi = mid;
-                }
+                if (pts[mid].X <= x) lo = mid + 1;
+                else hi = mid;
             }
             return lo - 1;
         }
