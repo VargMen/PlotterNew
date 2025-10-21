@@ -60,6 +60,25 @@ namespace PlotterNew.Controls
             _waveforms = Waveform.CreateMultiple(_waveformsAmount);
             _sineGenerators = Services.SineGenerator.CreateMultiple(_waveformsAmount);
         }
+        public void UpdateWaveformParameters(int idx, double scale, double offset)
+        {
+            if (idx < 0 || idx >= _waveforms.Count)
+                return;
+            _waveforms[idx].scale = scale;
+            _waveforms[idx].verticalOffset = offset;
+            QueueRender();
+        }
+        public (double, double) GetWaveformParameters(int idx)
+        {
+            if (idx < 0 || idx >= _waveforms.Count)
+                return (1.0, 0.0);
+            return (_waveforms[idx].scale, _waveforms[idx].verticalOffset);
+        }
+
+        public int GetWaveformsAmount()
+        {
+            return _waveforms.Count;
+        }
         private void OnOpened(object? sender, EventArgs e)
         {
         }
@@ -265,7 +284,7 @@ namespace PlotterNew.Controls
             if (start < end && start <= _waveforms[0].nominalPoints.Count)
             {
                 start = Math.Max(0, start);
-                end = Math.Min(_waveforms[0].nominalPoints.Count - 1, end + 1);
+                end = Math.Min(_waveforms[0].nominalPoints.Count - 1, end - 1);
 
                 for(int i = 0; i < _waveforms.Count; ++i)
                 {
