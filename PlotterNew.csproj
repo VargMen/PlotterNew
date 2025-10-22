@@ -25,15 +25,15 @@
       <PrivateAssets Condition="'$(Configuration)' != 'Debug'">All</PrivateAssets>
     </PackageReference>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+    <PackageReference Include="System.Reactive" Version="6.1.0" />
   </ItemGroup>
 
   <ItemGroup>
-    <Compile Update="MainView.axaml.cs">
+    <Compile Update="UI\Views\MainView.axaml.cs">
       <DependentUpon>MainView.axaml</DependentUpon>
     </Compile>
-  </ItemGroup>
-
-  <ItemGroup>
-    <Folder Include="Utils\" />
+    <Compile Update="UI\Views\PlotView.axaml.cs">
+      <DependentUpon>PlotView.axaml</DependentUpon>
+    </Compile>
   </ItemGroup>
 </Project>
