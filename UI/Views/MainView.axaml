@@ -9,9 +9,33 @@
         xmlns:vm="clr-namespace:PlotterNew.UI.ViewModels"
         x:DataType="vm:MainViewModel"
         Title="PlotterNew">
+        
+        <Window.DataContext>
+            <vm:MainViewModel/>
+        </Window.DataContext>
+        
+        <Grid ColumnDefinitions="300, *">
+			<Grid Grid.Column="0" ColumnDefinitions="Auto, *"
+              RowDefinitions="Auto, Auto, Auto"
+              Margin="20" RowSpacing="8">
 
+                <TextBlock Grid.Row="0" Grid.Column="0"
+                           Text="Total samples amount:"
+                           FontWeight="Bold"/>
+                <TextBlock Grid.Row="0" Grid.Column="1"
+                           Text="{Binding TotalSamplesAmount}"/>
+
+                <TextBlock Grid.Row="1" Grid.Column="0"
+                           Text="Is data feed running:"
+                           FontWeight="Bold"/>
+                <TextBlock Grid.Row="1" Grid.Column="1"
+                           Text="{Binding IsDataFeedRunning}"/>
+            </Grid>
+            <views:PlotView Grid.Column="1"/>
+        </Grid>
+    <!--
         <Grid>
             <views:PlotView DataContext="{Binding PlotVM}"/>
         </Grid>
-           
+            -->
 </Window>

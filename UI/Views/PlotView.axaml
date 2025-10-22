@@ -8,6 +8,12 @@
         xmlns:vm="clr-namespace:PlotterNew.UI.ViewModels"
         x:DataType="vm:PlotViewModel">
 
-    <views:Canvas2D Model="{Binding Model}" RenderVersion="{Binding RenderVersion}"/>
+    <Window.DataContext>
+      <vm:PlotViewModel/>
+    </Window.DataContext>
 
+    <views:Canvas2D Model="{Binding Model}"/>
+
+    <!-- <views:Canvas2D Model="{Binding Model}" RenderVersion="{Binding RenderVersion}"/>
+    -->
 </Window>

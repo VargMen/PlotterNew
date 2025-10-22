@@ -63,52 +63,29 @@ namespace PlotterNew.Core.Services
 
         private void Run(CancellationToken ct, Stopwatch sw)
         {
-            double dt = 1.0 / _sampleRateHz;
-            double nextSampleT = 0.0;
-
             var batch = new DataBatch(_seriesCount, _batchSize);
-
-            const int MinSleepMs = 1;
 
             while (!ct.IsCancellationRequested)
             {
-                double now = sw.Elapsed.TotalSeconds;
+                double t = sw.Elapsed.TotalSeconds;
 
-                if (now + 1e-9 < nextSampleT)
+                batch.X.Add(t);
+                for (int s = 0; s < _seriesCount; s++)
                 {
-                    Thread.Sleep(MinSleepMs);
-                    continue;
+                    // Different phase for each series
+                    double y = 100 + System.Math.Sin(2 * System.Math.PI * 1.0 * t + s * System.Math.PI / 3.0);
+                    batch.Y[s].Add(y);
                 }
 
-                int producedThisLoop = 0;
-                while (now + 1e-9 >= nextSampleT && !ct.IsCancellationRequested)
+                if (batch.X.Count >= _batchSize)
                 {
-                    double t = nextSampleT;
-                    batch.X.Add(t);
+                    try { BatchReady?.Invoke(batch); }
+                    catch { /* never crash the feed */ }
 
-                    for (int s = 0; s < _seriesCount; s++)
-                    {
-                        // Different phase for each series
-                        double y = System.Math.Sin(2 * System.Math.PI * 1.0 * t + s * System.Math.PI / 3.0);
-                        batch.Y[s].Add(y);
-                    }
-
-                    producedThisLoop++;
-                    nextSampleT += dt;
-
-                    if (batch.X.Count >= _batchSize)
-                    {
-                        try { BatchReady?.Invoke(batch); }
-                        catch { /* never crash the feed */ }
-
-                        batch = new DataBatch(_seriesCount, _batchSize);
-                    }
-
-                    if (producedThisLoop >= _batchSize * 4)
-                        break;
+                    batch = new DataBatch(_seriesCount, _batchSize);
                 }
 
-                Thread.Sleep(MinSleepMs);
+                Thread.Sleep(1);
             }
         }
     }
