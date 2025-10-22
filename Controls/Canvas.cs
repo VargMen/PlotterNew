@@ -18,6 +18,8 @@ namespace PlotterNew.Controls
 {
     public class Canvas : Control
     {
+        private MainViewModel? ViewModel => DataContext as MainViewModel;
+
         private Point _panOffset = new Point(0, 0);   
         private Point _lastMouse;                     
         private bool _isPanning;
@@ -53,10 +55,9 @@ namespace PlotterNew.Controls
             DispatcherPriority.Render,
             (_, _) => OnUiTick());
 
-
             _dataTimer = new Timer(10) { AutoReset = true };
             _dataTimer.Elapsed += (_, __) => OnDataTick();
-
+            
             _waveforms = Waveform.CreateMultiple(_waveformsAmount);
             _sineGenerators = Services.SineGenerator.CreateMultiple(_waveformsAmount);
         }
@@ -291,10 +292,10 @@ namespace PlotterNew.Controls
                     var geo = new StreamGeometry();
                     using (var g = geo.Open())
                     {
-                        g.BeginFigure(_waveforms[i].GetTransformedPoint(start), false);
+                        g.BeginFigure(CalcTransformedPoint(i, start), false);
                         for (int j = start + 1; j <= end; j++)
                         {
-                            g.LineTo(_waveforms[i].GetTransformedPoint(j));
+                            g.LineTo(CalcTransformedPoint(i, j));
                         }
                         g.EndFigure(false);
                     }
@@ -303,6 +304,14 @@ namespace PlotterNew.Controls
                     context.DrawGeometry(null, penForThisWaveform, geo);
                 }
             }
+        }
+        private Point CalcTransformedPoint(int waveformIdx, int pointIdx)
+        {
+            var wf = _waveforms[waveformIdx];
+            var pt = wf.nominalPoints[pointIdx];
+            double x = pt.X; 
+            double y = pt.Y * wf.scale + ViewModel.SliderCentersY[waveformIdx];//ViewModel.SliderCentersY[waveformIdx]
+            return new Point(x, y);
         }
         private void RenderAxes(DrawingContext context)
         {

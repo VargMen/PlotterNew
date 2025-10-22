@@ -14,6 +14,13 @@
             <vm:MainViewModel></vm:MainViewModel>
          </Window.DataContext>
 
+        <Grid ColumnDefinitions="65, *">
+            <Border Grid.Column="0" Background="LightGray">
+				<Border Grid.Column="0" Padding="12" Background="#1e1e1e">
+                  <Canvas x:Name="SliderCanvas" Background="#222" />
+                </Border>
+            </Border>
+        <!--
         <Grid ColumnDefinitions="250, *">
             <Border Grid.Column="0" Background="LightGray">
                 <StackPanel Orientation="Vertical" Margin="10">
@@ -48,12 +55,16 @@
                                 Width="250" ValueChanged="SliderOffset_ValueChanged"/>
                     </StackPanel>
                 </StackPanel>
-            </Border>
-         
+            </Border>-->
+            
             <Border Grid.Column="1">
                 <controls:Canvas x:Name="MyCanvas"></controls:Canvas>
             </Border>
+            <!--<ScrollViewer Grid.Column="1" Padding="16">
+              <StackPanel Spacing="8">
+                <TextBlock Text="Centers Y (px):" FontWeight="Bold" FontSize="16"/>
+                <ItemsControl x:Name="CentersList"/>
+              </StackPanel>
+            </ScrollViewer>-->
         </Grid>
-       
-        
 </Window>
