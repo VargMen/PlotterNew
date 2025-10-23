@@ -310,7 +310,7 @@ namespace PlotterNew.Controls
             var wf = _waveforms[waveformIdx];
             var pt = wf.nominalPoints[pointIdx];
             double x = pt.X; 
-            double y = pt.Y * wf.scale + ViewModel.SliderCentersY[waveformIdx];//ViewModel.SliderCentersY[waveformIdx]
+            double y = pt.Y * ViewModel.SliderValues[waveformIdx] + ViewModel.SliderCentersY[waveformIdx];//ViewModel.SliderCentersY[waveformIdx]
             return new Point(x, y);
         }
         private void RenderAxes(DrawingContext context)

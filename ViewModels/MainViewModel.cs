@@ -9,7 +9,7 @@ namespace PlotterNew.ViewModels
         [ObservableProperty]
         private ObservableCollection<double> _sliderCentersY = new ObservableCollection<double> { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
         [ObservableProperty]
-        private ObservableCollection<double> sliderValues = new ObservableCollection<double> { 1, 1, 1, 1, 1, 1, 1, 1, 1, 1 };
+        private ObservableCollection<double> _sliderValues = new ObservableCollection<double> { 1, 1, 1, 1, 1, 1, 1, 1, 1, 1 };
 
         [ObservableProperty]
         private double _currPanX = 0.0;

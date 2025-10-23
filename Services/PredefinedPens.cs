@@ -23,6 +23,20 @@ namespace PlotterNew.Services
             new Pen(new SolidColorBrush(Colors.DeepSkyBlue), 2)
         };
 
+        public static readonly List<SolidColorBrush> Brushes = new()
+        {
+            new SolidColorBrush(Colors.Yellow),
+            new SolidColorBrush(Colors.Cyan),
+            new SolidColorBrush(Colors.Blue),
+            new SolidColorBrush(Colors.Red),
+            new SolidColorBrush(Colors.Orange),
+            new SolidColorBrush(Colors.Purple),
+            new SolidColorBrush(Colors.Green),
+            new SolidColorBrush(Colors.Magenta),
+            new SolidColorBrush(Colors.Lime),
+            new SolidColorBrush(Colors.DeepSkyBlue),
+        };
+
         // Optional helper to get one by index safely:
         public static Pen Get(int index)
             => All[index % All.Count];
