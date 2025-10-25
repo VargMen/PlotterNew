@@ -17,6 +17,8 @@ namespace PlotterNew.Services
         public double Phase { get; private set; }   // phase shift (radians)
         public double TimeStep { get; private set; } // horizontal scaling
 
+        Random rand = new Random();
+
         public SineGenerator(
             double? y0 = null,
             double? amplitude = null,
@@ -38,6 +40,14 @@ namespace PlotterNew.Services
             double y = Y0 + Amplitude * Math.Sin(Omega * x + Phase);
             return new Avalonia.Point(x, y);
         }
+
+        public Avalonia.Point GetRandomAmplitudePoint(double t)
+        {
+            double x = t * TimeStep;
+            double y = Y0 + rand.NextDouble() * Amplitude * Math.Sin(Omega * x + Phase);
+            return new Avalonia.Point(x, y);
+        }
+
         public List<Avalonia.Point> Generate(double durationSeconds, double sampleRateHz)
         {
             int samples = (int)Math.Round(durationSeconds * sampleRateHz);

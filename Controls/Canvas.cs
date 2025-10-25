@@ -7,11 +7,14 @@ using PlotterNew.Models;
 using PlotterNew.Services;
 using PlotterNew.ViewModels;
 using System;
+using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
+using System.Globalization;
 using System.Linq;
+using System.Security.Cryptography.X509Certificates;
 using System.Timers;
 
 namespace PlotterNew.Controls
@@ -42,6 +45,18 @@ namespace PlotterNew.Controls
         private bool _renderQueued;
 
         private const int _waveformsAmount = 10;
+
+        class TimeRect
+        { 
+            public double startTime;
+            public double endTime;
+            public SolidColorBrush fillColor;
+            public Pen outlineColor;
+        }
+        
+        private List<TimeRect> _timeRects = new List<TimeRect>();
+        private bool _isTimeRectBeingDrawn = false;
+
         public Canvas()
         {
             PointerPressed += OnPointerPressed;
@@ -108,6 +123,13 @@ namespace PlotterNew.Controls
 
             for (int i = 0; i < _sineGenerators.Count; i++)
             {
+                if (i == 3)
+                {
+                    var randP = _sineGenerators[i].GetRandomAmplitudePoint(t);
+                    _pending.Enqueue((i, new List<Point> { randP }));
+                    continue;
+                }
+
                 var p = _sineGenerators[i].GetPoint(t);
                 _pending.Enqueue((i, new List<Point> { p }));
             }
@@ -188,42 +210,33 @@ namespace PlotterNew.Controls
 
         private void OnKeyDown(object? sender, KeyEventArgs e)
         {
-            switch (e.Key)
+            if (e.Key == Key.F)
             {
-                case Key.W:
-                    _waveforms[0].scale += _amplitudeStep;
-                    break;
-                case Key.S:
-                    _waveforms[0].scale -= _amplitudeStep;
-                    break;
+                if (!_isTimeRectBeingDrawn)
+                {
+                    if (_waveforms.Count == 0 || _waveforms[0].nominalPoints.Count == 0)
+                        return;
 
-                case Key.E:
-                    _waveforms[0].verticalOffset += _yPositionStep;
-                    break;
-                case Key.D:
-                    _waveforms[0].verticalOffset -= _yPositionStep;
-                    break;
-
-                case Key.T:
-                    _waveforms[1].scale += _amplitudeStep;
-                    break;
-                case Key.G:
-                    _waveforms[1].scale -= _amplitudeStep;
-                    break;
-
-                case Key.Y:
-                    _waveforms[1].verticalOffset += _yPositionStep;
-                    break;
-                case Key.H:
-                    _waveforms[1].verticalOffset -= _yPositionStep;
-                    break;
-
-                case Key.Space:
-                    ToggleTimers();
-                    break;
+                    _isTimeRectBeingDrawn = true;
+                    _timeRects.Add(new TimeRect
+                    {
+                        startTime = _waveforms[0].nominalPoints[_waveforms[0].nominalPoints.Count - 1].X,
+                        endTime = _waveforms[0].nominalPoints[_waveforms[0].nominalPoints.Count - 1].X,
+                        fillColor = new SolidColorBrush(Color.FromArgb(64, 255, 0, 0)),
+                        outlineColor = new Pen(Brushes.DarkRed, 2)
+                    });
+                }
+                else
+                {
+                    _isTimeRectBeingDrawn = false;
+                }
+            }
+            else if (e.Key == Key.Space)
+            {
+                ToggleTimers();
             }
 
-            QueueRender();
+                QueueRender();
         }
 
         private void OnPointerPressed(object? sender, PointerPressedEventArgs e)
@@ -259,6 +272,22 @@ namespace PlotterNew.Controls
             _lastMouse = pos;
 
             QueueRender();
+        }
+
+        static List<int> FindDivisibleIntegers(double minVal, double maxVal, int divisor)
+        {
+            var result = new List<int>();
+
+            int start = (int)Math.Ceiling(minVal);
+            int end = (int)Math.Floor(maxVal);
+
+            // First number divisible by divisor and >= start
+            int firstDivisible = ((start + divisor - 1) / divisor) * divisor;
+
+            for (int val = firstDivisible; val <= end; val += divisor)
+                result.Add(val);
+
+            return result;
         }
 
         public override void Render(DrawingContext context)
@@ -304,7 +333,57 @@ namespace PlotterNew.Controls
                     context.DrawGeometry(null, penForThisWaveform, geo);
                 }
             }
+
+            List<int> timeLabelValues = FindDivisibleIntegers(_waveforms[0].nominalPoints[start].X, _waveforms[0].nominalPoints[end].X, 100);
+
+            foreach (int val in timeLabelValues)
+            {
+                int valueToPrint = val / 100;
+
+                var pt = new Point(val, Bounds.Height - 50 - _panOffset.Y);
+                Avalonia.Media.FormattedText timeTextBuffer = new FormattedText(
+                                valueToPrint.ToString(),
+                                CultureInfo.InvariantCulture,
+                                FlowDirection.LeftToRight,
+                                new Typeface("Segoe UI"),
+                                24,
+                                Brushes.White);
+
+                context.DrawText(timeTextBuffer, pt);
+
+                var dashedPen = new Pen(
+                    new SolidColorBrush(Colors.White, 0.5),
+                    2,
+                    new DashStyle(new double[] { 6, 4 }, 0)
+                );
+                context.DrawLine(dashedPen, new Point(val + 10, -_panOffset.Y), new Point(val + 10, Bounds.Height - _panOffset.Y));
+            }
+
+            if (_isTimeRectBeingDrawn && _timeRects.Count > 0)
+            {
+                _timeRects[_timeRects.Count - 1].endTime = _waveforms[0].nominalPoints[_waveforms[0].nominalPoints.Count - 1].X;
+            }
+
+            foreach (var timeRect in _timeRects)
+            {
+                if (_waveforms[0].nominalPoints[start].X < timeRect.endTime && _waveforms[0].nominalPoints[end].X > timeRect.startTime)
+                {
+                    var rect = new Rect(
+                        timeRect.startTime,
+                        -_panOffset.Y,
+                        timeRect.endTime - timeRect.startTime,
+                        Bounds.Height);
+
+                    context.DrawRectangle(timeRect.fillColor, timeRect.outlineColor, rect);
+                }
+            }
+
+            //var rect = new Rect(-_panOffset.X, -_panOffset.Y, 100, Bounds.Height);
+            //var semiTransparentRed = new SolidColorBrush(Color.FromArgb(64, 255, 0, 0));
+            //context.DrawRectangle(semiTransparentRed, new Pen(Brushes.DarkRed, 2), rect);
         }
+
+
         private Point CalcTransformedPoint(int waveformIdx, int pointIdx)
         {
             var wf = _waveforms[waveformIdx];

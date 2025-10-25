@@ -7,7 +7,7 @@ namespace PlotterNew.ViewModels
     public partial class MainViewModel : ViewModelBase
     {
         [ObservableProperty]
-        private ObservableCollection<double> _sliderCentersY = new ObservableCollection<double> { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+        private ObservableCollection<double> _sliderCentersY = new ObservableCollection<double> { 0, 75, 150, 225, 300, 375, 450, 525, 600, 675 };
         [ObservableProperty]
         private ObservableCollection<double> _sliderValues = new ObservableCollection<double> { 1, 1, 1, 1, 1, 1, 1, 1, 1, 1 };
 

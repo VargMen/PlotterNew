@@ -79,10 +79,10 @@ namespace PlotterNew
                 double x = SidePadding + i * spacing + (spacing - SliderWidth) / 2.0;
                 Canvas.SetLeft(rect, x);
 
-                double top = (SliderCanvas.Bounds.Height - SliderHeight) / 2.0;
+                double top = VM.SliderCentersY[i];
                 Canvas.SetTop(rect, top);
 
-                VM.SliderCentersY[i] = top + SliderHeight / 2.0;
+                //VM.SliderCentersY[i] = top + SliderHeight / 2.0;
 
                 rect.PointerPressed += Slider_PointerPressed;
                 rect.PointerMoved += Slider_PointerMoved;
