@@ -16,6 +16,7 @@ using System.Globalization;
 using System.Linq;
 using System.Security.Cryptography.X509Certificates;
 using System.Timers;
+using System.Transactions;
 
 namespace PlotterNew.Controls
 {
@@ -32,9 +33,6 @@ namespace PlotterNew.Controls
 
         private readonly ConcurrentQueue<(int idx, List<Point> pts)> _pending = new();
 
-        private const double _amplitudeStep = 0.1;
-        private const double _yPositionStep = 10;
-
         private readonly DispatcherTimer _uiTimer;
         private readonly Timer _dataTimer;
         private readonly Stopwatch _stopwatch = new Stopwatch();
@@ -46,6 +44,12 @@ namespace PlotterNew.Controls
 
         private const int _waveformsAmount = 10;
 
+        private int MinVisibleTimeIndex => Math.Max(0, LowerBound(_waveforms[0].nominalPoints, -_panOffset.X) - 1);
+        private int MaxVisibleTimeIndex => Math.Min(_waveforms[0].nominalPoints.Count - 1, UpperBound(_waveforms[0].nominalPoints, -_panOffset.X + Bounds.Width) + 1);
+        private double MinVisibleTime => _waveforms[0].nominalPoints[MinVisibleTimeIndex].X;
+        private double MaxVisibleTime => _waveforms[0].nominalPoints[MaxVisibleTimeIndex].X;
+
+        private double LastTime => _waveforms[0].nominalPoints.Count > 0 ? _waveforms[0].nominalPoints[_waveforms[0].nominalPoints.Count - 1].X : 0.0;
         class TimeRect
         { 
             public double startTime;
@@ -164,11 +168,9 @@ namespace PlotterNew.Controls
             if (_waveforms[0].nominalPoints.Count == 0)
                 return;
 
-            double latestX = _waveforms[0].nominalPoints.Last().X;
-
-            if (latestX > rightEdge - _autoScrollMargin)
+            if (MaxVisibleTime > rightEdge - _autoScrollMargin)
             {
-                double newLeft = latestX - viewWidth + _autoScrollMargin;
+                double newLeft = MaxVisibleTime - viewWidth + _autoScrollMargin;
                 double newPanX = -newLeft;
 
                 newPanX = Math.Min(0, newPanX);
@@ -220,8 +222,8 @@ namespace PlotterNew.Controls
                     _isTimeRectBeingDrawn = true;
                     _timeRects.Add(new TimeRect
                     {
-                        startTime = _waveforms[0].nominalPoints[_waveforms[0].nominalPoints.Count - 1].X,
-                        endTime = _waveforms[0].nominalPoints[_waveforms[0].nominalPoints.Count - 1].X,
+                        startTime = LastTime,
+                        endTime = LastTime,
                         fillColor = new SolidColorBrush(Color.FromArgb(64, 255, 0, 0)),
                         outlineColor = new Pen(Brushes.DarkRed, 2)
                     });

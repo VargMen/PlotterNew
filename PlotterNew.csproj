@@ -8,6 +8,12 @@
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
   </PropertyGroup>
   <ItemGroup>
+    <AvaloniaXaml Remove="Utils\**" />
+    <Compile Remove="Utils\**" />
+    <EmbeddedResource Remove="Utils\**" />
+    <None Remove="Utils\**" />
+  </ItemGroup>
+  <ItemGroup>
     <None Remove="Assets\Images\rubicon_logo.png" />
   </ItemGroup>
   <ItemGroup>
@@ -31,9 +37,5 @@
     <Compile Update="MainView.axaml.cs">
       <DependentUpon>MainView.axaml</DependentUpon>
     </Compile>
-  </ItemGroup>
-
-  <ItemGroup>
-    <Folder Include="Utils\" />
   </ItemGroup>
 </Project>
