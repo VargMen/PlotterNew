@@ -61,6 +61,10 @@ namespace PlotterNew.Controls
         private List<TimeRect> _timeRects = new List<TimeRect>();
         private bool _isTimeRectBeingDrawn = false;
 
+        private static double _xScale = 1;
+        private const double _minXScale = 1;
+        private const double _maxXScale = 50.0;
+        private const double _zoomStep = 1.1;
         public Canvas()
         {
             PointerPressed += OnPointerPressed;
@@ -68,6 +72,7 @@ namespace PlotterNew.Controls
             PointerMoved += OnPointerMoved;
             Focusable = true;
             KeyDown += OnKeyDown;
+            PointerWheelChanged += OnPointerWheelChanged;
 
             _uiTimer = new DispatcherTimer(
             TimeSpan.FromMilliseconds(10),
@@ -80,6 +85,41 @@ namespace PlotterNew.Controls
             _waveforms = Waveform.CreateMultiple(_waveformsAmount);
             _sineGenerators = Services.SineGenerator.CreateMultiple(_waveformsAmount);
         }
+
+        private void OnPointerWheelChanged(object? sender, PointerWheelEventArgs e)
+        {
+            if (Bounds.Width <= 0) return;
+
+            double mouseX = e.GetPosition(this).X;      // screen/pixel
+            double oldScale = _xScale;
+            double desired = e.Delta.Y > 0 ? _zoomStep : 1.0 / _zoomStep;
+            double newScale = Math.Clamp(oldScale * desired, _minXScale, _maxXScale);
+            if (Math.Abs(newScale - oldScale) < 1e-9) return;
+
+            double factor = newScale / oldScale;
+
+            // keep the time under the cursor fixed:
+            double newPanX = _panOffset.X + (1 - factor) * (mouseX - _panOffset.X);
+
+            _xScale = newScale;
+            _panOffset = new Point(newPanX, _panOffset.Y);
+
+            ClampPanX();
+            QueueRender();
+        }
+
+        private void ClampPanX()
+        {
+            if (_panOffset.X > 0) _panOffset = new Point(0, _panOffset.Y);
+            if (_waveforms[0].nominalPoints.Count == 0 || Bounds.Width <= 0) return;
+
+            double lastTime = _waveforms[0].nominalPoints[^1].X;
+            double contentWidthPx = lastTime * _xScale;
+            double minPanX = Math.Min(0, Bounds.Width - contentWidthPx);
+            if (_panOffset.X < minPanX)
+                _panOffset = new Point(minPanX, _panOffset.Y);
+        }
+
         public void UpdateWaveformParameters(int idx, double scale, double offset)
         {
             if (idx < 0 || idx >= _waveforms.Count)
@@ -95,20 +135,6 @@ namespace PlotterNew.Controls
             return (_waveforms[idx].scale, _waveforms[idx].verticalOffset);
         }
 
-        public int GetWaveformsAmount()
-        {
-            return _waveforms.Count;
-        }
-        private void OnOpened(object? sender, EventArgs e)
-        {
-        }
-        private void InitViewModels(MainViewModel vm)
-        {
-            for (int i = 0; i < _waveformsAmount; ++i)
-            {
-                vm.WaveformIds.Add(i);
-            }
-        }
         private void QueueRender()
         {
             if (_renderQueued) return;
@@ -155,30 +181,25 @@ namespace PlotterNew.Controls
 
         private void TryAutoScroll()
         {
-            if (!_autoScrollEnabled || _isPanning)
-                return;
+            if (!_autoScrollEnabled || _isPanning) return;
+            if (Bounds.Width <= 0) return;
+            if (_waveforms[0].nominalPoints.Count == 0) return;
 
-            double viewWidth = Bounds.Width;
-            if (!(viewWidth > 0))
-                return;
+            double minWorldX = (-_panOffset.X) / _xScale;
+            double viewWidthWorld = Bounds.Width / _xScale;
+            double rightWorld = minWorldX + viewWidthWorld;
 
-            double leftEdge = -_panOffset.X;
-            double rightEdge = leftEdge + viewWidth;
+            double lastTime = _waveforms[0].nominalPoints[^1].X; // max world X
+            double marginWorld = _autoScrollMargin / _xScale;
 
-            if (_waveforms[0].nominalPoints.Count == 0)
-                return;
-
-            if (MaxVisibleTime > rightEdge - _autoScrollMargin)
+            if (lastTime > rightWorld - marginWorld)
             {
-                double newLeft = MaxVisibleTime - viewWidth + _autoScrollMargin;
-                double newPanX = -newLeft;
-
+                double newLeftWorld = lastTime - viewWidthWorld + marginWorld;
+                double newPanX = -newLeftWorld * _xScale;
                 newPanX = Math.Min(0, newPanX);
 
                 if (Math.Abs(newPanX - _panOffset.X) > 0.01)
-                {
                     _panOffset = new Point(newPanX, _panOffset.Y);
-                }
             }
         }
 
@@ -307,11 +328,11 @@ namespace PlotterNew.Controls
             if (_waveforms[0].nominalPoints.Count == 0)
                 return;
 
-            double minViewX = -_panOffset.X;
-            double maxViewX = -_panOffset.X + Bounds.Width;
+            double minWorldX = (-_panOffset.X) / _xScale;
+            double maxWorldX = (-_panOffset.X + Bounds.Width) / _xScale;
 
-            int start = LowerBound(_waveforms[0].nominalPoints, minViewX);
-            int end = UpperBound(_waveforms[0].nominalPoints, maxViewX);
+            int start = LowerBound(_waveforms[0].nominalPoints, minWorldX);
+            int end = UpperBound(_waveforms[0].nominalPoints, maxWorldX);
 
             if (start < end && start <= _waveforms[0].nominalPoints.Count)
             {
@@ -334,55 +355,52 @@ namespace PlotterNew.Controls
                     Pen penForThisWaveform = PredefinedPens.Get(i);
                     context.DrawGeometry(null, penForThisWaveform, geo);
                 }
-            }
 
-            List<int> timeLabelValues = FindDivisibleIntegers(_waveforms[0].nominalPoints[start].X, _waveforms[0].nominalPoints[end].X, 100);
+                int timeInterval = 1;
 
-            foreach (int val in timeLabelValues)
-            {
-                int valueToPrint = val / 100;
+                List<int> timeLabelValues = FindDivisibleIntegers(_waveforms[0].nominalPoints[start].X, _waveforms[0].nominalPoints[end].X, timeInterval * 100);
 
-                var pt = new Point(val, Bounds.Height - 50 - _panOffset.Y);
-                Avalonia.Media.FormattedText timeTextBuffer = new FormattedText(
-                                valueToPrint.ToString(),
-                                CultureInfo.InvariantCulture,
-                                FlowDirection.LeftToRight,
-                                new Typeface("Segoe UI"),
-                                24,
-                                Brushes.White);
-
-                context.DrawText(timeTextBuffer, pt);
-
-                var dashedPen = new Pen(
-                    new SolidColorBrush(Colors.White, 0.5),
-                    2,
-                    new DashStyle(new double[] { 6, 4 }, 0)
-                );
-                context.DrawLine(dashedPen, new Point(val + 10, -_panOffset.Y), new Point(val + 10, Bounds.Height - _panOffset.Y));
-            }
-
-            if (_isTimeRectBeingDrawn && _timeRects.Count > 0)
-            {
-                _timeRects[_timeRects.Count - 1].endTime = _waveforms[0].nominalPoints[_waveforms[0].nominalPoints.Count - 1].X;
-            }
-
-            foreach (var timeRect in _timeRects)
-            {
-                if (_waveforms[0].nominalPoints[start].X < timeRect.endTime && _waveforms[0].nominalPoints[end].X > timeRect.startTime)
+                foreach (int val in timeLabelValues)
                 {
-                    var rect = new Rect(
-                        timeRect.startTime,
-                        -_panOffset.Y,
-                        timeRect.endTime - timeRect.startTime,
-                        Bounds.Height);
+                    double valToPring = val / 100;
+                    var pt = new Point(val * _xScale, Bounds.Height - 50 - _panOffset.Y);
+                    Avalonia.Media.FormattedText timeTextBuffer = new FormattedText(
+                                    valToPring.ToString(),
+                                    CultureInfo.InvariantCulture,
+                                    FlowDirection.LeftToRight,
+                                    new Typeface("Segoe UI"),
+                                    24,
+                                    Brushes.White);
 
-                    context.DrawRectangle(timeRect.fillColor, timeRect.outlineColor, rect);
+                    context.DrawText(timeTextBuffer, pt);
+
+                    var dashedPen = new Pen(
+                        new SolidColorBrush(Colors.White, 0.5),
+                        2,
+                        new DashStyle(new double[] { 6, 4 }, 0)
+                    );
+                    context.DrawLine(dashedPen, new Point(val * _xScale + 10, -_panOffset.Y), new Point(val * _xScale + 10, Bounds.Height - _panOffset.Y));
+                }
+
+                if (_isTimeRectBeingDrawn && _timeRects.Count > 0)
+                {
+                    _timeRects[_timeRects.Count - 1].endTime = _waveforms[0].nominalPoints[_waveforms[0].nominalPoints.Count - 1].X;
+                }
+
+                foreach (var timeRect in _timeRects)
+                {
+                    if (_waveforms[0].nominalPoints[start].X < timeRect.endTime && _waveforms[0].nominalPoints[end].X > timeRect.startTime)
+                    {
+                        var rect = new Rect(
+                            timeRect.startTime * _xScale,
+                            -_panOffset.Y,
+                            timeRect.endTime - timeRect.startTime * _xScale,
+                            Bounds.Height);
+
+                        context.DrawRectangle(timeRect.fillColor, timeRect.outlineColor, rect);
+                    }
                 }
             }
-
-            //var rect = new Rect(-_panOffset.X, -_panOffset.Y, 100, Bounds.Height);
-            //var semiTransparentRed = new SolidColorBrush(Color.FromArgb(64, 255, 0, 0));
-            //context.DrawRectangle(semiTransparentRed, new Pen(Brushes.DarkRed, 2), rect);
         }
 
 
@@ -390,18 +408,11 @@ namespace PlotterNew.Controls
         {
             var wf = _waveforms[waveformIdx];
             var pt = wf.nominalPoints[pointIdx];
-            double x = pt.X; 
-            double y = pt.Y * ViewModel.SliderValues[waveformIdx] + ViewModel.SliderCentersY[waveformIdx];//ViewModel.SliderCentersY[waveformIdx]
+            double x = pt.X * _xScale; 
+            double y = pt.Y * ViewModel.SliderValues[waveformIdx] + ViewModel.SliderCentersY[waveformIdx];
             return new Point(x, y);
         }
-        private void RenderAxes(DrawingContext context)
-        {
-            var penY = new Pen(Brushes.Green, 4);
-            context.DrawLine(penY, new Point(0, 0), new Point(0, 500));
 
-            var penX = new Pen(Brushes.Red, 4);
-            context.DrawLine(penX, new Point(0, 0), new Point(500, 0));
-        }
         private static int LowerBound(List<Avalonia.Point> pts, double x)
         {
             int lo = 0, hi = pts.Count;
