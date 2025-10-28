@@ -32,7 +32,7 @@ namespace PlotterNew.Services
             double f = frequencyHz ?? NextRange(0.2, 0.3);   // Hz
             Omega = 0.25 * Math.PI * f;
             Phase = phase ?? NextRange(0, 2 * Math.PI);
-            TimeStep = timeStep ?? 100;
+            TimeStep = timeStep ?? 30;
         }
         public Avalonia.Point GetPoint(double t)
         {

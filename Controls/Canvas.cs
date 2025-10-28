@@ -6,6 +6,7 @@ using Avalonia.Threading;
 using PlotterNew.Models;
 using PlotterNew.Services;
 using PlotterNew.ViewModels;
+using SkiaSharp;
 using System;
 using System.Collections;
 using System.Collections.Concurrent;
@@ -17,6 +18,8 @@ using System.Linq;
 using System.Security.Cryptography.X509Certificates;
 using System.Timers;
 using System.Transactions;
+using Tmds.DBus.Protocol;
+using static System.Net.Mime.MediaTypeNames;
 
 namespace PlotterNew.Controls
 {
@@ -24,14 +27,19 @@ namespace PlotterNew.Controls
     {
         private MainViewModel? ViewModel => DataContext as MainViewModel;
 
+        SerialTenReader ArduinoPort;
+        bool RunWithArduino = true;
+
         private Point _panOffset = new Point(0, 0);   
         private Point _lastMouse;                     
         private bool _isPanning;
-
+        private bool _isAutoScrolling = true;
         private readonly List<Waveform> _waveforms;
         private readonly List<Services.SineGenerator> _sineGenerators;
 
-        private readonly ConcurrentQueue<(int idx, List<Point> pts)> _pending = new();
+        //private readonly ConcurrentQueue<(int idx, List<Point> pts)> _pending = new();
+
+        private readonly ConcurrentQueue<List<Point>> _pending = new();
 
         private readonly DispatcherTimer _uiTimer;
         private readonly Timer _dataTimer;
@@ -65,17 +73,31 @@ namespace PlotterNew.Controls
         private const double _minXScale = 1;
         private const double _maxXScale = 50.0;
         private const double _zoomStep = 1.1;
+        private const double _wheelPanFactorPx = 20.0;
+        private double _wheelPanRemainderPx = 0.0;
+        // tune this: world units per wheel "tick"
+        private const double _wheelWorldStep = 120.0;
+
+        private bool _isRedRectBeingDrawn = false;
+        private  double kRedRectDuration = 5.0 * _xScale * 29; 
         public Canvas()
         {
-            PointerPressed += OnPointerPressed;
-            PointerReleased += OnPointerReleased;
-            PointerMoved += OnPointerMoved;
+            if (RunWithArduino)
+            {
+                ArduinoPort = new SerialTenReader("COM11", 230400);
+                ArduinoPort.Start();
+            }
+
+            //PointerPressed += OnPointerPressed;
+            //PointerReleased += OnPointerReleased;
+            //PointerMoved += OnPointerMoved;
             Focusable = true;
             KeyDown += OnKeyDown;
+            KeyUp += OnKeyUp;
             PointerWheelChanged += OnPointerWheelChanged;
 
             _uiTimer = new DispatcherTimer(
-            TimeSpan.FromMilliseconds(10),
+            TimeSpan.FromMilliseconds(20),
             DispatcherPriority.Render,
             (_, _) => OnUiTick());
 
@@ -85,10 +107,35 @@ namespace PlotterNew.Controls
             _waveforms = Waveform.CreateMultiple(_waveformsAmount);
             _sineGenerators = Services.SineGenerator.CreateMultiple(_waveformsAmount);
         }
-
         private void OnPointerWheelChanged(object? sender, PointerWheelEventArgs e)
         {
             if (Bounds.Width <= 0) return;
+
+            // SHIFT + wheel => horizontal pan in *pixels*
+            bool shift = (e.KeyModifiers & KeyModifiers.Shift) != 0;
+
+            if (shift)
+            {
+                // prefer horizontal delta on trackpads
+                double raw = Math.Abs(e.Delta.X) > 0 ? e.Delta.X : e.Delta.Y;
+
+                // convert a world step into pixels so scroll "speed" is consistent across zooms
+                double stepPx = (_wheelWorldStep * _xScale);
+
+                // accumulate fractional pixels to avoid stutter
+                double deltaPxAcc = -raw * stepPx + _wheelPanRemainderPx;
+                int deltaPxInt = (int)Math.Truncate(deltaPxAcc);            // keep sign
+                _wheelPanRemainderPx = deltaPxAcc - deltaPxInt;             // remainder
+
+                if (deltaPxInt != 0)
+                {
+                    _panOffset = new Point(_panOffset.X + deltaPxInt, _panOffset.Y);
+                    ClampPanX();
+                    QueueRender();
+                }
+                e.Handled = true;
+                return;
+            }
 
             double mouseX = e.GetPosition(this).X;      // screen/pixel
             double oldScale = _xScale;
@@ -106,6 +153,12 @@ namespace PlotterNew.Controls
 
             ClampPanX();
             QueueRender();
+        }
+
+        private void OnKeyUp(object? s, KeyEventArgs e)
+        {
+            if (e.Key == Key.LeftShift || e.Key == Key.RightShift)
+                _isAutoScrolling = true;
         }
 
         private void ClampPanX()
@@ -147,38 +200,175 @@ namespace PlotterNew.Controls
             }, DispatcherPriority.Render);
         }
 
-        private void OnDataTick()
+        /*private void OnDataTick()
         {
             double t = _stopwatch.Elapsed.TotalSeconds;
 
-            for (int i = 0; i < _sineGenerators.Count; i++)
+            if (RunWithArduino)
             {
-                if (i == 3)
+                var data = ArduinoPort.GetSData();
+                if (data == null) return;
+                for (int i = 0; i < data.Count && i < _waveforms.Count; i++)
                 {
-                    var randP = _sineGenerators[i].GetRandomAmplitudePoint(t);
-                    _pending.Enqueue((i, new List<Point> { randP }));
-                    continue;
+                    var p = new Point(t, data[i]);
+                    _pending.Enqueue((i, new List<Point> { p }));
                 }
-
-                var p = _sineGenerators[i].GetPoint(t);
-                _pending.Enqueue((i, new List<Point> { p }));
+                return;
             }
+            else
+            {
+                for (int i = 0; i < _sineGenerators.Count; i++)
+                {
+                    if (i == 3)
+                    {
+                        var randP = _sineGenerators[i].GetRandomAmplitudePoint(t);
+                        _pending.Enqueue((i, new List<Point> { randP }));
+                        continue;
+                    }
+
+                    var p = _sineGenerators[i].GetPoint(t);
+                    _pending.Enqueue((i, new List<Point> { p }));
+                }
+            }
+        }*/
+        //private void OnDataTick()
+        //{
+        //    double t = _stopwatch.Elapsed.TotalSeconds;
+        //    var series = new Point?[_waveforms.Count];   // one slot per plot
+
+        //    if (RunWithArduino)
+        //    {
+        //        var data = ArduinoPort.GetSData();
+        //        if (data == null) return;
+
+        //        int n = Math.Min(data.Count, _waveforms.Count);
+        //        for (int i = 0; i < n; i++)
+        //            series[i] = new Point(t, data[i]);
+        //    }
+        //    else
+        //    {
+        //        for (int i = 0; i < _sineGenerators.Count && i < _waveforms.Count; i++)
+        //        {
+        //            if (i == 3)
+        //                series[i] = _sineGenerators[i].GetRandomAmplitudePoint(t);
+        //            else
+        //                series[i] = _sineGenerators[i].GetPoint(t);
+        //        }
+        //    }
+
+        //    _pending.Enqueue(new Batch(t, series));
+        //}
+
+        //public static readonly StyledProperty<string> LogTextProperty =
+        //AvaloniaProperty.Register<Controls.Canvas, string>(nameof(LogText), defaultValue: string.Empty);
+
+        //public string LogText
+        //{
+        //    get => GetValue(LogTextProperty);
+        //    set => SetValue(LogTextProperty, value);
+        //}
+
+        private void OnDataTick()
+        {
+            if (RunWithArduino)
+            {
+                if (ArduinoPort.Queue.TryDequeue(out var ten))
+                {
+                    double t = _stopwatch.Elapsed.TotalSeconds;
+                    List<Point> chunk = new List<Point>(_waveformsAmount);
+                    for (int i = 0; i < _waveformsAmount; i++)
+                    {
+                        chunk.Add(new Point(t, ten.Values[i]));
+                    }
+                    _pending.Enqueue(chunk);
+                }
+            }
+            else
+            {
+                double t = _stopwatch.Elapsed.TotalSeconds;
+                List<Point> chunk = new List<Point>(_waveformsAmount);
+               
+                for (int i = 0; i < _waveformsAmount; i++)
+                {
+                    var p = (i == 3)
+                        ? _sineGenerators[i].GetRandomAmplitudePoint(t)
+                        : _sineGenerators[i].GetPoint(t);
+                    chunk.Add(p);
+                }
+                _pending.Enqueue(chunk);
+            }
+
+            Dispatcher.UIThread.Post(() =>
+            {
+                QueueRender();
+            }, DispatcherPriority.Render);
         }
 
-        private void OnUiTick()
+        /*private void OnUiTick()
         {
             while (_pending.TryDequeue(out var item))
             {
                 _waveforms[item.idx].nominalPoints.AddRange(item.pts);
             }
 
-            TryAutoScroll();
+            if (_isAutoScrolling)
+            {
+                TryAutoScroll();
+            }
 
             UpdateViewModel();
 
             InvalidateVisual();
-        }
+        }*/
+        //private void OnUiTick()
+        //{
+        //    // Collect all dequeued batches into per-series buckets
+        //    var buckets = new List<Point>[_waveforms.Count];
 
+        //    while (_pending.TryDequeue(out var batch))
+        //    {
+        //        var series = batch.Series;
+        //        int n = Math.Min(series.Length, _waveforms.Count);
+
+        //        for (int i = 0; i < n; i++)
+        //        {
+        //            if (series[i] is Point p)
+        //            {
+        //                (buckets[i] ??= new List<Point>(16)).Add(p);
+        //            }
+        //        }
+        //    }
+
+        //    // Append once per series to reduce churn
+        //    for (int i = 0; i < buckets.Length; i++)
+        //    {
+        //        if (buckets[i] is { Count: > 0 } list)
+        //            _waveforms[i].nominalPoints.AddRange(list);
+        //    }
+
+        //    if (_isAutoScrolling)
+        //        TryAutoScroll();
+
+        //    UpdateViewModel();
+        //    InvalidateVisual();
+        //}
+        private void OnUiTick()
+        {
+            // Drain all available full chunks
+            while (_pending.TryDequeue(out var chunk))
+            {
+                for (int i = 0; i < _waveformsAmount; i++)
+                {
+                    _waveforms[i].nominalPoints.Add(chunk[i] * 10);
+                }
+            }
+
+            if (_isAutoScrolling)
+                TryAutoScroll();
+
+            UpdateViewModel();
+            InvalidateVisual();
+        }
         private void TryAutoScroll()
         {
             if (!_autoScrollEnabled || _isPanning) return;
@@ -198,7 +388,7 @@ namespace PlotterNew.Controls
                 double newPanX = -newLeftWorld * _xScale;
                 newPanX = Math.Min(0, newPanX);
 
-                if (Math.Abs(newPanX - _panOffset.X) > 0.01)
+                if (Math.Abs(newPanX - _panOffset.X) > 0.1)
                     _panOffset = new Point(newPanX, _panOffset.Y);
             }
         }
@@ -245,21 +435,31 @@ namespace PlotterNew.Controls
                     {
                         startTime = LastTime,
                         endTime = LastTime,
-                        fillColor = new SolidColorBrush(Color.FromArgb(64, 255, 0, 0)),
-                        outlineColor = new Pen(Brushes.DarkRed, 2)
+                        fillColor = new SolidColorBrush(Color.FromArgb(64, 255, 255, 0)),
+                        outlineColor = new Pen(Brushes.Yellow, 2)
                     });
                 }
                 else
                 {
                     _isTimeRectBeingDrawn = false;
+                    _isRedRectBeingDrawn = true;
+                    _timeRects.Add(new TimeRect
+                    {
+                        startTime = LastTime,
+                        endTime = LastTime,
+                        fillColor = new SolidColorBrush(Color.FromArgb(64, 255, 0, 0)),
+                        outlineColor = new Pen(Brushes.DarkRed, 2)
+                    });
                 }
             }
             else if (e.Key == Key.Space)
             {
                 ToggleTimers();
             }
+            else if (e.Key == Key.LeftShift || e.Key == Key.RightShift)
+                _isAutoScrolling = false;
 
-                QueueRender();
+            QueueRender();
         }
 
         private void OnPointerPressed(object? sender, PointerPressedEventArgs e)
@@ -313,6 +513,16 @@ namespace PlotterNew.Controls
             return result;
         }
 
+        public static string ToMinutesSeconds(int totalSeconds)
+        {
+            if (totalSeconds < 0) totalSeconds = 0; // optional guard
+
+            int minutes = totalSeconds / 60;
+            int seconds = totalSeconds % 60;
+
+            return $"{minutes:D2}:{seconds:D2}";
+        }
+
         public override void Render(DrawingContext context)
         {
             base.Render(context);
@@ -354,18 +564,25 @@ namespace PlotterNew.Controls
 
                     Pen penForThisWaveform = PredefinedPens.Get(i);
                     context.DrawGeometry(null, penForThisWaveform, geo);
+
+                    var scb = (ISolidColorBrush)penForThisWaveform.Brush;
+                    var pen = new Pen(new SolidColorBrush(scb.Color, 0.3), 2);
+
+                    context.DrawLine(pen, 
+                        new Point(_waveforms[0].nominalPoints[start].X * _xScale, ViewModel!.SliderCentersY[i]), 
+                        new Point(_waveforms[0].nominalPoints[end].X * _xScale, ViewModel!.SliderCentersY[i]));
                 }
 
                 int timeInterval = 1;
 
-                List<int> timeLabelValues = FindDivisibleIntegers(_waveforms[0].nominalPoints[start].X, _waveforms[0].nominalPoints[end].X, timeInterval * 100);
+                List<int> timeLabelValues = FindDivisibleIntegers(_waveforms[0].nominalPoints[start].X, _waveforms[0].nominalPoints[end].X, timeInterval * 30);
 
                 foreach (int val in timeLabelValues)
                 {
-                    double valToPring = val / 100;
+                    int valToPring = val / 30;
                     var pt = new Point(val * _xScale, Bounds.Height - 50 - _panOffset.Y);
                     Avalonia.Media.FormattedText timeTextBuffer = new FormattedText(
-                                    valToPring.ToString(),
+                                    ToMinutesSeconds(valToPring),
                                     CultureInfo.InvariantCulture,
                                     FlowDirection.LeftToRight,
                                     new Typeface("Segoe UI"),
@@ -379,7 +596,7 @@ namespace PlotterNew.Controls
                         2,
                         new DashStyle(new double[] { 6, 4 }, 0)
                     );
-                    context.DrawLine(dashedPen, new Point(val * _xScale + 10, -_panOffset.Y), new Point(val * _xScale + 10, Bounds.Height - _panOffset.Y));
+                    context.DrawLine(dashedPen, new Point(val * _xScale + 29, -_panOffset.Y), new Point(val * _xScale + 29, Bounds.Height - _panOffset.Y));
                 }
 
                 if (_isTimeRectBeingDrawn && _timeRects.Count > 0)
@@ -387,6 +604,15 @@ namespace PlotterNew.Controls
                     _timeRects[_timeRects.Count - 1].endTime = _waveforms[0].nominalPoints[_waveforms[0].nominalPoints.Count - 1].X;
                 }
 
+                if (_isRedRectBeingDrawn && _timeRects.Count > 0)
+                {
+                    _timeRects[_timeRects.Count - 1].endTime = _waveforms[0].nominalPoints[_waveforms[0].nominalPoints.Count - 1].X;
+
+                    if (_timeRects[_timeRects.Count - 1].endTime - _timeRects[_timeRects.Count - 1].startTime >= kRedRectDuration)
+                    {
+                        _isRedRectBeingDrawn = false;
+                    }
+                }
                 foreach (var timeRect in _timeRects)
                 {
                     if (_waveforms[0].nominalPoints[start].X < timeRect.endTime && _waveforms[0].nominalPoints[end].X > timeRect.startTime)
@@ -394,7 +620,7 @@ namespace PlotterNew.Controls
                         var rect = new Rect(
                             timeRect.startTime * _xScale,
                             -_panOffset.Y,
-                            timeRect.endTime - timeRect.startTime * _xScale,
+                            (timeRect.endTime - timeRect.startTime) * _xScale,
                             Bounds.Height);
 
                         context.DrawRectangle(timeRect.fillColor, timeRect.outlineColor, rect);

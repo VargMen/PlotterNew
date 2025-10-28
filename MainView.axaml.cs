@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
+using PlotterNew.Services;
 using PlotterNew.ViewModels;
 using System;
 using System.Collections.Generic;
@@ -38,6 +39,9 @@ namespace PlotterNew
             InitializeComponent();
 
             DataContext = new MainViewModel();
+
+            //Services.ArduinoData data = new ArduinoData("COM11", 9600);
+            //double[] values = data.GetSData();
 
             SliderCanvas.AttachedToVisualTree += (_, __) =>
             {

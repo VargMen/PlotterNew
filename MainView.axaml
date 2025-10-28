@@ -13,58 +13,15 @@
         <Window.DataContext>
             <vm:MainViewModel></vm:MainViewModel>
          </Window.DataContext>
-
+        
         <Grid ColumnDefinitions="65, *">
             <Border Grid.Column="0" Background="LightGray">
 				<Border Grid.Column="0" Padding="12" Background="#1e1e1e">
                   <Canvas x:Name="SliderCanvas" Background="#222" />
                 </Border>
             </Border>
-        <!--
-        <Grid ColumnDefinitions="250, *">
-            <Border Grid.Column="0" Background="LightGray">
-                <StackPanel Orientation="Vertical" Margin="10">
-                    <TextBlock Grid.Row="0">
-                        <TextBlock.Text>
-                            <MultiBinding StringFormat="Pan offset: {0:F2}, {1:F2}">
-                                <Binding Path="CurrPanX"/>
-                                <Binding Path="CurrPanY"/>
-                            </MultiBinding>
-                        </TextBlock.Text>
-                    </TextBlock>
-                    <TextBlock Grid.Row="1">
-                        <TextBlock.Text>
-                            <MultiBinding StringFormat="Elapsed time: {0:F2}">
-                                <Binding Path="ElapsedTime"/>
-                            </MultiBinding>
-                        </TextBlock.Text>
-                    </TextBlock>
-                    <ComboBox Width="200" Grid.Row="2"  ItemsSource="{Binding WaveformIds}" x:Name="PlotSelector"
-                    SelectedItem="{Binding CurrWaveformId, Mode=TwoWay}" SelectionChanged="PlotSelector_SelectionChanged">
-                    </ComboBox>
-                    <StackPanel Grid.Row="3" Spacing="0" Margin="10">
-                        <TextBlock Text="{Binding CurrWaveformScale, StringFormat='Scale: {0:F0}'}"/>
-                        <Slider Minimum="-5" Maximum="5" x:Name="ScaleSlider"
-                                Value="{Binding CurrWaveformScale, Mode=TwoWay}"
-                                Width="250" ValueChanged="SliderScale_ValueChanged"/>
-                    </StackPanel>
-                    <StackPanel Grid.Row="4" Spacing="0" Margin="10">
-                        <TextBlock Text="{Binding CurrWaveformOffset, StringFormat='Offset: {0:F0}'}"/>
-                        <Slider Minimum="-800" Maximum="800" x:Name="OffsetSlider"
-                                Value="{Binding CurrWaveformOffset, Mode=TwoWay}"
-                                Width="250" ValueChanged="SliderOffset_ValueChanged"/>
-                    </StackPanel>
-                </StackPanel>
-            </Border>-->
-            
-            <Border Grid.Column="1">
+                        <Border Grid.Column="1">
                 <controls:Canvas x:Name="MyCanvas"></controls:Canvas>
             </Border>
-            <!--<ScrollViewer Grid.Column="1" Padding="16">
-              <StackPanel Spacing="8">
-                <TextBlock Text="Centers Y (px):" FontWeight="Bold" FontSize="16"/>
-                <ItemsControl x:Name="CentersList"/>
-              </StackPanel>
-            </ScrollViewer>-->
         </Grid>
 </Window>
