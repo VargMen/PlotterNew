@@ -100,7 +100,6 @@ namespace PlotterNew.Services
 
         public static List<double> ParseSignals(string line, int valuesAmount)
         {
-            // Result pre-filled with zeros
             var result = new List<double>(capacity: valuesAmount);
             for (int i = 0; i < valuesAmount; i++)
                 result.Add(0.0);
@@ -108,15 +107,12 @@ namespace PlotterNew.Services
             if (string.IsNullOrWhiteSpace(line))
                 return result;
 
-            // Remove trailing newline(s) and surrounding whitespace
             line = line.Trim();
 
-            // Split by commas into tokens like "s3:-0.1875"
             var tokens = line.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
             foreach (var token in tokens)
             {
-                // Expect "name:value"
                 var parts = token.Split(':', 2, StringSplitOptions.TrimEntries);
                 if (parts.Length != 2) continue;
 
@@ -125,17 +121,12 @@ namespace PlotterNew.Services
 
                 if (name.Length >= 2 && (name[0] == 's' || name[0] == 'S'))
                 {
-                    // Try parse index after 's'
                     if (int.TryParse(name.AsSpan(1), out int idx) && idx >= 0 && idx < valuesAmount)
                     {
                         if (double.TryParse(valStr, NumberStyles.Float | NumberStyles.AllowThousands,
                                             CultureInfo.InvariantCulture, out double value))
                         {
                             result[idx] = value;
-                        }
-                        else
-                        {
-                            // If value malformed, leave default 0.0
                         }
                     }
                 }

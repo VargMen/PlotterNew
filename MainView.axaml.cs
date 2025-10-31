@@ -17,8 +17,9 @@ namespace PlotterNew
         private const double SliderWidth = 45;
         private const double SliderHeight = 25;
         private const double SidePadding = 30;
-        private const double DiamondSize = 16;
-        private const double ValueSensitivity = 0.05; // px -> value
+        private const double DiamondSize = 20;
+        private const double ValueSensitivity = 0.01; // px -> value
+        private const double centeringAxisOffset = -11.5;
 
         // Drag state for rectangles (move slider)
         private int _dragIndex = -1;
@@ -40,16 +41,13 @@ namespace PlotterNew
 
             DataContext = new MainViewModel();
 
-            //Services.ArduinoData data = new ArduinoData("COM11", 9600);
-            //double[] values = data.GetSData();
-
             SliderCanvas.AttachedToVisualTree += (_, __) =>
             {
                 EnsureCollections();
                 BuildSliders();
             };
 
-            SliderCanvas.SizeChanged += (_, __) => RepositionAll();
+            //SliderCanvas.SizeChanged += (_, __) => RepositionAll();
         }
 
         private void EnsureCollections()
@@ -83,7 +81,7 @@ namespace PlotterNew
                 double x = SidePadding + i * spacing + (spacing - SliderWidth) / 2.0;
                 Canvas.SetLeft(rect, x);
 
-                double top = VM.SliderCentersY[i];
+                double top = VM.SliderCentersY[i] - 23.5;
                 Canvas.SetTop(rect, top);
 
                 //VM.SliderCentersY[i] = top + SliderHeight / 2.0;
@@ -103,7 +101,7 @@ namespace PlotterNew
                     Background = Brushes.Orange,
                     Tag = i,
                     RenderTransform = new RotateTransform(45),
-                    RenderTransformOrigin = new RelativePoint(0.5, 0.5, RelativeUnit.Relative),
+                    RenderTransformOrigin = new RelativePoint(0.95, 1.7, RelativeUnit.Relative),
                     Cursor = new Cursor(StandardCursorType.SizeNorthSouth)
                 };
 
@@ -124,23 +122,7 @@ namespace PlotterNew
             double centerY = VM.SliderCentersY[i];
 
             Canvas.SetLeft(diamond, x + (SliderWidth - DiamondSize) / 2.0);
-            Canvas.SetTop(diamond, centerY - DiamondSize / 2.0);
-        }
-
-        private void RepositionAll()
-        {
-            for (int i = 0; i < _rects.Count; i++)
-            {
-                var rect = _rects[i];
-                double top = Canvas.GetTop(rect);
-                double clamped = Clamp(top, 0, Math.Max(0, SliderCanvas.Bounds.Height - SliderHeight));
-                if (Math.Abs(clamped - top) > double.Epsilon)
-                    Canvas.SetTop(rect, clamped);
-
-                VM.SliderCentersY[i] = Canvas.GetTop(rect) + SliderHeight / 2.0;
-                CenterDiamond(i, rect, _diamonds[i]);
-            }
-            InvalidateVisual();
+            Canvas.SetTop(diamond, centerY - DiamondSize / 2.0 + centeringAxisOffset);
         }
 
         // ===== Rectangle drag (moves slider) =====
@@ -167,7 +149,7 @@ namespace PlotterNew
             double newTop = p.Y - _dragOffsetY;
             newTop = Clamp(newTop, 0, Math.Max(0, SliderCanvas.Bounds.Height - SliderHeight));
 
-            Canvas.SetTop(rect, newTop);
+            Canvas.SetTop(rect, newTop + centeringAxisOffset);
 
             VM.SliderCentersY[_dragIndex] = newTop + SliderHeight / 2.0;
 

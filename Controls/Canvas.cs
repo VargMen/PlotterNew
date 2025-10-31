@@ -25,102 +25,104 @@ namespace PlotterNew.Controls
 {
     public class Canvas : Control
     {
+        bool RunWithArduino = false;
         private MainViewModel? ViewModel => DataContext as MainViewModel;
 
-        SerialTenReader ArduinoPort;
-        bool RunWithArduino = true;
-
-        private Point _panOffset = new Point(0, 0);   
-        private Point _lastMouse;                     
-        private bool _isPanning;
-        private bool _isAutoScrolling = true;
-        private readonly List<Waveform> _waveforms;
-        private readonly List<Services.SineGenerator> _sineGenerators;
-
-        //private readonly ConcurrentQueue<(int idx, List<Point> pts)> _pending = new();
-
-        private readonly ConcurrentQueue<List<Point>> _pending = new();
-
-        private readonly DispatcherTimer _uiTimer;
-        private readonly Timer _dataTimer;
-        private readonly Stopwatch _stopwatch = new Stopwatch();
-
-        private const double _autoScrollMargin = 50;
-        private bool _autoScrollEnabled = true;
-
-        private bool _renderQueued;
-
         private const int _waveformsAmount = 10;
+        private List<Waveform> _waveforms;
 
-        private int MinVisibleTimeIndex => Math.Max(0, LowerBound(_waveforms[0].nominalPoints, -_panOffset.X) - 1);
-        private int MaxVisibleTimeIndex => Math.Min(_waveforms[0].nominalPoints.Count - 1, UpperBound(_waveforms[0].nominalPoints, -_panOffset.X + Bounds.Width) + 1);
-        private double MinVisibleTime => _waveforms[0].nominalPoints[MinVisibleTimeIndex].X;
-        private double MaxVisibleTime => _waveforms[0].nominalPoints[MaxVisibleTimeIndex].X;
+        class TimeMarker
+        {
+            public double time = 0.0;
+            public Pen pen;
+            public SolidColorBrush flagColor;
+            public Pen flagOutlineColor;
+        }
 
-        private double LastTime => _waveforms[0].nominalPoints.Count > 0 ? _waveforms[0].nominalPoints[_waveforms[0].nominalPoints.Count - 1].X : 0.0;
         class TimeRect
-        { 
-            public double startTime;
-            public double endTime;
+        {
+            public double startTime = 0.0;
+            public double endTime = 0.0;
             public SolidColorBrush fillColor;
             public Pen outlineColor;
+            public List<TimeMarker> markers;
         }
-        
+
         private List<TimeRect> _timeRects = new List<TimeRect>();
         private bool _isTimeRectBeingDrawn = false;
 
+        private List<Services.SineGenerator> _sineGenerators;
+
+        private SerialReader32 _serialReader;
+        private ConcurrentQueue<List<Point>> _pending = new();
+
+        private Timer _dataTimer;
+        private Stopwatch _stopwatch = new Stopwatch();
+
+        private DispatcherTimer _uiTimer;
+        private bool _renderQueued = false;
+
+        private bool _isAutoScrolling = true;
+        private Point _panOffset = new Point(0, 0);
+        private Point _lastMouse = new Point(0, 0);
+        private bool _isPanning = false;
+
         private static double _xScale = 1;
         private const double _minXScale = 1;
-        private const double _maxXScale = 50.0;
+        private const double _maxXScale = 300.0;
         private const double _zoomStep = 1.1;
-        private const double _wheelPanFactorPx = 20.0;
         private double _wheelPanRemainderPx = 0.0;
-        // tune this: world units per wheel "tick"
-        private const double _wheelWorldStep = 120.0;
+        private const double _wheelWorldStep = 10.0;
 
+        // Time rectangle drawing state
         private bool _isRedRectBeingDrawn = false;
-        private  double kRedRectDuration = 5.0 * _xScale * 29; 
+        private double kRedRectDuration = 8.0 * _xScale;
+
+        private double _autoTargetPanX = 0.0;       // updated by TryAutoScroll
+        private double _autoPanVelX = 0.0;          // velocity for the smooth damp
+        private double _lastAnimSec = 0.0;
+
+        //private int MinVisibleTimeIndex => Math.Max(0, LowerBound(_waveforms[0].nominalPoints, -_panOffset.X) - 1);
+        //private int MaxVisibleTimeIndex => Math.Min(_waveforms[0].nominalPoints.Count - 1, UpperBound(_waveforms[0].nominalPoints, -_panOffset.X + Bounds.Width) + 1);
+        //private double MinVisibleTime => _waveforms[0].nominalPoints[MinVisibleTimeIndex].X;
+        //private double MaxVisibleTime => _waveforms[0].nominalPoints[MaxVisibleTimeIndex].X;
+
+        private double LastTime => _waveforms[0].nominalPoints.Count > 0 ? _waveforms[0].nominalPoints[_waveforms[0].nominalPoints.Count - 1].X : 0.0;
+
         public Canvas()
         {
             if (RunWithArduino)
             {
-                ArduinoPort = new SerialTenReader("COM11", 230400);
-                ArduinoPort.Start();
+                _serialReader = new SerialReader32("COM11", 230400);
+                _serialReader.Start();
             }
 
-            //PointerPressed += OnPointerPressed;
-            //PointerReleased += OnPointerReleased;
-            //PointerMoved += OnPointerMoved;
+            _waveforms = Waveform.CreateMultiple(_waveformsAmount);
+            _sineGenerators = Services.SineGenerator.CreateMultiple(_waveformsAmount);
+
             Focusable = true;
             KeyDown += OnKeyDown;
             KeyUp += OnKeyUp;
             PointerWheelChanged += OnPointerWheelChanged;
 
             _uiTimer = new DispatcherTimer(
-            TimeSpan.FromMilliseconds(20),
+            TimeSpan.FromMilliseconds(17),
             DispatcherPriority.Render,
             (_, _) => OnUiTick());
 
-            _dataTimer = new Timer(10) { AutoReset = true };
+            _dataTimer = new Timer(55) { AutoReset = true };
             _dataTimer.Elapsed += (_, __) => OnDataTick();
-            
-            _waveforms = Waveform.CreateMultiple(_waveformsAmount);
-            _sineGenerators = Services.SineGenerator.CreateMultiple(_waveformsAmount);
         }
         private void OnPointerWheelChanged(object? sender, PointerWheelEventArgs e)
         {
             if (Bounds.Width <= 0) return;
 
-            // SHIFT + wheel => horizontal pan in *pixels*
-            bool shift = (e.KeyModifiers & KeyModifiers.Shift) != 0;
-
-            if (shift)
+            if ((e.KeyModifiers & KeyModifiers.Shift) != 0)
             {
-                // prefer horizontal delta on trackpads
-                double raw = Math.Abs(e.Delta.X) > 0 ? e.Delta.X : e.Delta.Y;
+                double raw = e.Delta.Y;
 
                 // convert a world step into pixels so scroll "speed" is consistent across zooms
-                double stepPx = (_wheelWorldStep * _xScale);
+                double stepPx = (_wheelWorldStep + _xScale / 10);
 
                 // accumulate fractional pixels to avoid stutter
                 double deltaPxAcc = -raw * stepPx + _wheelPanRemainderPx;
@@ -130,26 +132,24 @@ namespace PlotterNew.Controls
                 if (deltaPxInt != 0)
                 {
                     _panOffset = new Point(_panOffset.X + deltaPxInt, _panOffset.Y);
-                    ClampPanX();
-                    QueueRender();
                 }
-                e.Handled = true;
-                return;
             }
+            else
+            {
+                double mouseX = e.GetPosition(this).X;      // screen/pixel
+                double oldScale = _xScale;
+                double desired = e.Delta.Y > 0 ? _zoomStep : 1.0 / _zoomStep;
+                double newScale = Math.Clamp(oldScale * desired, _minXScale, _maxXScale);
+                if (Math.Abs(newScale - oldScale) < 1.0e-5) return;
 
-            double mouseX = e.GetPosition(this).X;      // screen/pixel
-            double oldScale = _xScale;
-            double desired = e.Delta.Y > 0 ? _zoomStep : 1.0 / _zoomStep;
-            double newScale = Math.Clamp(oldScale * desired, _minXScale, _maxXScale);
-            if (Math.Abs(newScale - oldScale) < 1e-9) return;
+                double factor = newScale / oldScale;
 
-            double factor = newScale / oldScale;
+                // keep the time under the cursor fixed:
+                double newPanX = _panOffset.X + (1 - factor) * (mouseX - _panOffset.X);
 
-            // keep the time under the cursor fixed:
-            double newPanX = _panOffset.X + (1 - factor) * (mouseX - _panOffset.X);
-
-            _xScale = newScale;
-            _panOffset = new Point(newPanX, _panOffset.Y);
+                _xScale = newScale;
+                _panOffset = new Point(newPanX, _panOffset.Y);
+            }
 
             ClampPanX();
             QueueRender();
@@ -166,7 +166,7 @@ namespace PlotterNew.Controls
             if (_panOffset.X > 0) _panOffset = new Point(0, _panOffset.Y);
             if (_waveforms[0].nominalPoints.Count == 0 || Bounds.Width <= 0) return;
 
-            double lastTime = _waveforms[0].nominalPoints[^1].X;
+            double lastTime = LastTime;
             double contentWidthPx = lastTime * _xScale;
             double minPanX = Math.Min(0, Bounds.Width - contentWidthPx);
             if (_panOffset.X < minPanX)
@@ -177,8 +177,10 @@ namespace PlotterNew.Controls
         {
             if (idx < 0 || idx >= _waveforms.Count)
                 return;
+
             _waveforms[idx].scale = scale;
             _waveforms[idx].verticalOffset = offset;
+
             QueueRender();
         }
         public (double, double) GetWaveformParameters(int idx)
@@ -200,85 +202,16 @@ namespace PlotterNew.Controls
             }, DispatcherPriority.Render);
         }
 
-        /*private void OnDataTick()
-        {
-            double t = _stopwatch.Elapsed.TotalSeconds;
-
-            if (RunWithArduino)
-            {
-                var data = ArduinoPort.GetSData();
-                if (data == null) return;
-                for (int i = 0; i < data.Count && i < _waveforms.Count; i++)
-                {
-                    var p = new Point(t, data[i]);
-                    _pending.Enqueue((i, new List<Point> { p }));
-                }
-                return;
-            }
-            else
-            {
-                for (int i = 0; i < _sineGenerators.Count; i++)
-                {
-                    if (i == 3)
-                    {
-                        var randP = _sineGenerators[i].GetRandomAmplitudePoint(t);
-                        _pending.Enqueue((i, new List<Point> { randP }));
-                        continue;
-                    }
-
-                    var p = _sineGenerators[i].GetPoint(t);
-                    _pending.Enqueue((i, new List<Point> { p }));
-                }
-            }
-        }*/
-        //private void OnDataTick()
-        //{
-        //    double t = _stopwatch.Elapsed.TotalSeconds;
-        //    var series = new Point?[_waveforms.Count];   // one slot per plot
-
-        //    if (RunWithArduino)
-        //    {
-        //        var data = ArduinoPort.GetSData();
-        //        if (data == null) return;
-
-        //        int n = Math.Min(data.Count, _waveforms.Count);
-        //        for (int i = 0; i < n; i++)
-        //            series[i] = new Point(t, data[i]);
-        //    }
-        //    else
-        //    {
-        //        for (int i = 0; i < _sineGenerators.Count && i < _waveforms.Count; i++)
-        //        {
-        //            if (i == 3)
-        //                series[i] = _sineGenerators[i].GetRandomAmplitudePoint(t);
-        //            else
-        //                series[i] = _sineGenerators[i].GetPoint(t);
-        //        }
-        //    }
-
-        //    _pending.Enqueue(new Batch(t, series));
-        //}
-
-        //public static readonly StyledProperty<string> LogTextProperty =
-        //AvaloniaProperty.Register<Controls.Canvas, string>(nameof(LogText), defaultValue: string.Empty);
-
-        //public string LogText
-        //{
-        //    get => GetValue(LogTextProperty);
-        //    set => SetValue(LogTextProperty, value);
-        //}
-
         private void OnDataTick()
         {
             if (RunWithArduino)
             {
-                if (ArduinoPort.Queue.TryDequeue(out var ten))
+                if (_serialReader.Queue.TryDequeue(out var pkt))
                 {
-                    double t = _stopwatch.Elapsed.TotalSeconds;
                     List<Point> chunk = new List<Point>(_waveformsAmount);
                     for (int i = 0; i < _waveformsAmount; i++)
                     {
-                        chunk.Add(new Point(t, ten.Values[i]));
+                        chunk.Add(new Point(pkt.TimeSec, pkt.Values[i]));
                     }
                     _pending.Enqueue(chunk);
                 }
@@ -297,81 +230,25 @@ namespace PlotterNew.Controls
                 }
                 _pending.Enqueue(chunk);
             }
-
-            Dispatcher.UIThread.Post(() =>
-            {
-                QueueRender();
-            }, DispatcherPriority.Render);
         }
-
-        /*private void OnUiTick()
-        {
-            while (_pending.TryDequeue(out var item))
-            {
-                _waveforms[item.idx].nominalPoints.AddRange(item.pts);
-            }
-
-            if (_isAutoScrolling)
-            {
-                TryAutoScroll();
-            }
-
-            UpdateViewModel();
-
-            InvalidateVisual();
-        }*/
-        //private void OnUiTick()
-        //{
-        //    // Collect all dequeued batches into per-series buckets
-        //    var buckets = new List<Point>[_waveforms.Count];
-
-        //    while (_pending.TryDequeue(out var batch))
-        //    {
-        //        var series = batch.Series;
-        //        int n = Math.Min(series.Length, _waveforms.Count);
-
-        //        for (int i = 0; i < n; i++)
-        //        {
-        //            if (series[i] is Point p)
-        //            {
-        //                (buckets[i] ??= new List<Point>(16)).Add(p);
-        //            }
-        //        }
-        //    }
-
-        //    // Append once per series to reduce churn
-        //    for (int i = 0; i < buckets.Length; i++)
-        //    {
-        //        if (buckets[i] is { Count: > 0 } list)
-        //            _waveforms[i].nominalPoints.AddRange(list);
-        //    }
-
-        //    if (_isAutoScrolling)
-        //        TryAutoScroll();
-
-        //    UpdateViewModel();
-        //    InvalidateVisual();
-        //}
         private void OnUiTick()
         {
-            // Drain all available full chunks
-            while (_pending.TryDequeue(out var chunk))
+            if (_pending.TryDequeue(out var chunk))
             {
                 for (int i = 0; i < _waveformsAmount; i++)
                 {
-                    _waveforms[i].nominalPoints.Add(chunk[i] * 10);
+                    _waveforms[i].nominalPoints.Add(chunk[i]);
                 }
             }
 
-            if (_isAutoScrolling)
+            if (_isAutoScrolling && !_isPanning)
                 TryAutoScroll();
 
             UpdateViewModel();
             InvalidateVisual();
         }
-        private void TryAutoScroll()
+        /*private void TryAutoScroll()
         {
-            if (!_autoScrollEnabled || _isPanning) return;
             if (Bounds.Width <= 0) return;
             if (_waveforms[0].nominalPoints.Count == 0) return;
 
@@ -385,11 +262,92 @@ namespace PlotterNew.Controls
             if (lastTime > rightWorld - marginWorld)
             {
                 double newLeftWorld = lastTime - viewWidthWorld + marginWorld;
+                
                 double newPanX = -newLeftWorld * _xScale;
                 newPanX = Math.Min(0, newPanX);
 
                 if (Math.Abs(newPanX - _panOffset.X) > 0.1)
                     _panOffset = new Point(newPanX, _panOffset.Y);
+            }
+        }*/
+        private const double _marginStartPx = 80;   // start auto-scroll when newest point gets this close
+        private const double _marginStopPx = 120;  // use a bit bigger margin to avoid chatter (hysteresis)
+        private const double _smoothTimeSec = 0.10; // ~100 ms response (tweak)
+        private const double _maxSpeedPxSec = 5000; // clamp excessive speeds (tweak)
+
+        private void TryAutoScroll()
+        {
+            if (Bounds.Width <= 0) return;
+            if (_waveforms.Count == 0 || _waveforms[0].nominalPoints.Count == 0) return;
+
+            double minWorldX = (-_panOffset.X) / _xScale;
+            double viewWidthWorld = Bounds.Width / _xScale;
+            double rightWorld = minWorldX + viewWidthWorld;
+
+            double lastTime = _waveforms[0].nominalPoints[^1].X; // most recent world X
+
+            double marginStartWorld = _marginStartPx / _xScale;
+            double marginStopWorld = _marginStopPx / _xScale;
+
+            if (lastTime > rightWorld - marginStopWorld)
+            {
+                // Keep newest point at ~_marginStopPx from the right edge
+                double newLeftWorld = lastTime - viewWidthWorld + marginStopWorld;
+                double targetPanX = -newLeftWorld * _xScale;
+
+                // Don’t allow panning into positive (empty space on the left)
+                _autoTargetPanX = Math.Min(0.0, targetPanX);
+            }
+            AnimatePan();
+        }
+
+        private static double SmoothDamp(double current, double target, ref double currentVelocity,
+                                 double smoothTime, double maxSpeed, double deltaTime)
+        {
+            smoothTime = Math.Max(0.0001, smoothTime);
+            double omega = 2.0 / smoothTime;
+            double x = omega * deltaTime;
+            double exp = 1.0 / (1.0 + x + 0.48 * x * x + 0.235 * x * x * x);
+
+            double change = current - target;
+            double maxChange = maxSpeed * smoothTime;
+            change = Math.Clamp(change, -maxChange, maxChange);
+
+            double temp = (currentVelocity + omega * change) * deltaTime;
+            currentVelocity = (currentVelocity - omega * temp) * exp;
+
+            double output = target + (change + temp) * exp;
+
+            // Prevent overshoot
+            if ((target - current > 0.0) == (output > target))
+            {
+                output = target;
+                currentVelocity = 0.0;
+            }
+            return output;
+        }
+
+        private void AnimatePan()
+        {
+            double now = _stopwatch.Elapsed.TotalSeconds;
+            double dt = Math.Max(0.0, now - _lastAnimSec);
+            _lastAnimSec = now;
+
+            if (_isAutoScrolling)
+            {
+                double newX = SmoothDamp(_panOffset.X, _autoTargetPanX, ref _autoPanVelX,
+                                         _smoothTimeSec, _maxSpeedPxSec, dt);
+
+                if (Math.Abs(newX - _panOffset.X) > 0.01) // tiny deadzone
+                {
+                    _panOffset = new Point(newX, _panOffset.Y);
+                    // You likely already call QueueRender() elsewhere; keep it cheap here.
+                }
+            }
+            else
+            {
+                // if user is panning manually, decay velocity so it doesn’t “snap back” later
+                _autoPanVelX *= Math.Exp(-6.0 * dt);
             }
         }
 
@@ -436,7 +394,8 @@ namespace PlotterNew.Controls
                         startTime = LastTime,
                         endTime = LastTime,
                         fillColor = new SolidColorBrush(Color.FromArgb(64, 255, 255, 0)),
-                        outlineColor = new Pen(Brushes.Yellow, 2)
+                        outlineColor = new Pen(Brushes.Yellow, 2),
+                        markers = new List<TimeMarker>()
                     });
                 }
                 else
@@ -448,7 +407,8 @@ namespace PlotterNew.Controls
                         startTime = LastTime,
                         endTime = LastTime,
                         fillColor = new SolidColorBrush(Color.FromArgb(64, 255, 0, 0)),
-                        outlineColor = new Pen(Brushes.DarkRed, 2)
+                        outlineColor = new Pen(Brushes.DarkRed, 2),
+                        markers = new List<TimeMarker>()
                     });
                 }
             }
@@ -457,15 +417,50 @@ namespace PlotterNew.Controls
                 ToggleTimers();
             }
             else if (e.Key == Key.LeftShift || e.Key == Key.RightShift)
+            {
                 _isAutoScrolling = false;
+            }
+            else if (e.Key == Key.OemPlus)
+            {
+                if (_isRedRectBeingDrawn)
+                {
+                    _timeRects[_timeRects.Count - 1].markers.Add(new TimeMarker 
+                    { 
+                        time = LastTime, 
+                        pen = new Pen(Brushes.White), 
+                        flagColor = new SolidColorBrush(Color.FromArgb(180, 0, 255, 0)),
+                        flagOutlineColor = new Pen(Brushes.Green) 
+                    });
+                }
+            }
+            else if (e.Key == Key.OemMinus)
+            {
+                if (_isRedRectBeingDrawn)
+                {
+                    _timeRects[_timeRects.Count - 1].markers.Add(new TimeMarker
+                    {
+                        time = LastTime,
+                        pen = new Pen(Brushes.White),
+                        flagColor = new SolidColorBrush(Color.FromArgb(180, 255, 0, 0)),
+                        flagOutlineColor = new Pen(Brushes.Red)
+                    });
+                }
+            }
+            //else if (e.Key == Key.Q)
+            //{
+            //    for (var value in App.MainVM.SliderValues)
+            //    {
+            //        value += 2;
+            //    }
+            //}
 
-            QueueRender();
+                QueueRender();
         }
 
         private void OnPointerPressed(object? sender, PointerPressedEventArgs e)
         {
             _isPanning = true;
-            _autoScrollEnabled = false;
+            _isAutoScrolling = false;
             _lastMouse = e.GetPosition(this);
             e.Pointer.Capture(this);
         }
@@ -473,7 +468,7 @@ namespace PlotterNew.Controls
         private void OnPointerReleased(object? sender, PointerReleasedEventArgs e)
         {
             _isPanning = false;
-            _autoScrollEnabled = true;
+            _isAutoScrolling = true;
             e.Pointer.Capture(null);
         }
 
@@ -511,6 +506,11 @@ namespace PlotterNew.Controls
                 result.Add(val);
 
             return result;
+        }
+
+        void DrawVerticalLine(DrawingContext ctx, double xCoord, Pen pen)
+        {
+            ctx.DrawLine(pen, new Point(xCoord, -_panOffset.Y), new Point(xCoord, Bounds.Height - _panOffset.Y));
         }
 
         public static string ToMinutesSeconds(int totalSeconds)
@@ -559,6 +559,14 @@ namespace PlotterNew.Controls
                         {
                             g.LineTo(CalcTransformedPoint(i, j));
                         }
+
+                        if (_waveforms[i].nominalPoints.Last().X < _panOffset.X + Bounds.Width * _xScale)
+                        {
+                            g.LineTo(new Point(_waveforms[i].nominalPoints.Last().X * _xScale, App.MainVM.SliderCentersY[i]));
+                            //g.LineTo(new Point(_waveforms[i].nominalPoints.Last().X + 10, CalcTransformedPoint(i, 0).Y));
+                            g.LineTo(new Point(_panOffset.X + Bounds.Width * _xScale, App.MainVM.SliderCentersY[i]));
+                        }
+
                         g.EndFigure(false);
                     }
 
@@ -573,13 +581,13 @@ namespace PlotterNew.Controls
                         new Point(_waveforms[0].nominalPoints[end].X * _xScale, ViewModel!.SliderCentersY[i]));
                 }
 
-                int timeInterval = 1;
+                int timeInterval = 5;
 
-                List<int> timeLabelValues = FindDivisibleIntegers(_waveforms[0].nominalPoints[start].X, _waveforms[0].nominalPoints[end].X, timeInterval * 30);
+                List<int> timeLabelValues = FindDivisibleIntegers(_waveforms[0].nominalPoints[start].X, _waveforms[0].nominalPoints[end].X, timeInterval);
 
                 foreach (int val in timeLabelValues)
                 {
-                    int valToPring = val / 30;
+                    int valToPring = val;
                     var pt = new Point(val * _xScale, Bounds.Height - 50 - _panOffset.Y);
                     Avalonia.Media.FormattedText timeTextBuffer = new FormattedText(
                                     ToMinutesSeconds(valToPring),
@@ -596,7 +604,8 @@ namespace PlotterNew.Controls
                         2,
                         new DashStyle(new double[] { 6, 4 }, 0)
                     );
-                    context.DrawLine(dashedPen, new Point(val * _xScale + 29, -_panOffset.Y), new Point(val * _xScale + 29, Bounds.Height - _panOffset.Y));
+
+                    DrawVerticalLine(context, val * _xScale + 29, dashedPen);
                 }
 
                 if (_isTimeRectBeingDrawn && _timeRects.Count > 0)
@@ -624,6 +633,19 @@ namespace PlotterNew.Controls
                             Bounds.Height);
 
                         context.DrawRectangle(timeRect.fillColor, timeRect.outlineColor, rect);
+
+                        foreach (var timeMarker in timeRect.markers)
+                        {
+                            DrawVerticalLine(context, timeMarker.time * _xScale, timeMarker.pen);
+
+                            var flag = new Rect(
+                            timeMarker.time * _xScale,
+                            -_panOffset.Y + 40,
+                            50,
+                            35);
+
+                            context.DrawRectangle(timeMarker.flagColor, timeMarker.flagOutlineColor, flag);
+                        }
                     }
                 }
             }

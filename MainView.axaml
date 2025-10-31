@@ -15,12 +15,10 @@
          </Window.DataContext>
         
         <Grid ColumnDefinitions="65, *">
-            <Border Grid.Column="0" Background="LightGray">
-				<Border Grid.Column="0" Padding="12" Background="#1e1e1e">
+				<Border Grid.Column="0" Padding="12" Background="#1e1e1e" ZIndex="1">
                   <Canvas x:Name="SliderCanvas" Background="#222" />
                 </Border>
-            </Border>
-                        <Border Grid.Column="1">
+            <Border Grid.Column="1" ZIndex="0">
                 <controls:Canvas x:Name="MyCanvas"></controls:Canvas>
             </Border>
         </Grid>

@@ -23,27 +23,25 @@ namespace PlotterNew.Services
             double? y0 = null,
             double? amplitude = null,
             double? frequencyHz = null,
-            double? phase = null,
-            double? timeStep = null)
+            double? phase = null)
         {
             // If any argument is null, generate random parameter
             Y0 = y0 ?? 0;
-            Amplitude = amplitude ?? NextRange(20, 200);
+            Amplitude = amplitude ?? NextRange(20, 50);
             double f = frequencyHz ?? NextRange(0.2, 0.3);   // Hz
-            Omega = 0.25 * Math.PI * f;
+            Omega = NextRange(2, 10);
             Phase = phase ?? NextRange(0, 2 * Math.PI);
-            TimeStep = timeStep ?? 30;
         }
         public Avalonia.Point GetPoint(double t)
         {
-            double x = t * TimeStep;
+            double x = t;
             double y = Y0 + Amplitude * Math.Sin(Omega * x + Phase);
             return new Avalonia.Point(x, y);
         }
 
         public Avalonia.Point GetRandomAmplitudePoint(double t)
         {
-            double x = t * TimeStep;
+            double x = t;
             double y = Y0 + rand.NextDouble() * Amplitude * Math.Sin(Omega * x + Phase);
             return new Avalonia.Point(x, y);
         }
